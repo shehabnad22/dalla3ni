@@ -1,0 +1,12 @@
+PLACEHOLDER - App Icon
+
+Replace this with your actual icon files:
+- icon.png (1024x1024 px) - Main app icon
+- icon_foreground.png (512x512 px) - Adaptive icon foreground
+- splash.png (512x512 px) - Splash screen logo
+
+After adding icons, run:
+  flutter pub get
+  flutter pub run flutter_launcher_icons
+  flutter pub run flutter_native_splash:create
+
