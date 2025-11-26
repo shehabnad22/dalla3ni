@@ -13,32 +13,73 @@ const Order = sequelize.define('Order', {
   },
   driverId: {
     type: DataTypes.UUID,
+    allowNull: true, // Nullable until assigned
   },
   itemsText: {
     type: DataTypes.TEXT,
     allowNull: false,
   },
-  price: {
+  estimatedPrice: {
     type: DataTypes.DECIMAL(10, 2),
+    allowNull: true, // Optional
   },
   deliveryFee: {
     type: DataTypes.DECIMAL(10, 2),
+    defaultValue: 1.5,
   },
-  totalPrice: {
+  commissionAmount: {
     type: DataTypes.DECIMAL(10, 2),
+    defaultValue: 1.5,
+  },
+  driverShare: {
+    type: DataTypes.DECIMAL(10, 2),
+    defaultValue: 0,
+  },
+  deliveryCode: {
+    type: DataTypes.STRING(4),
+    allowNull: true,
+  },
+  invoiceImageUrl: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  podImageUrl: {
+    type: DataTypes.STRING,
+    allowNull: true, // Proof of Delivery
   },
   status: {
-    type: DataTypes.ENUM('pending', 'matching', 'accepted', 'picked_up', 'delivered', 'cancelled'),
-    defaultValue: 'pending',
+    type: DataTypes.ENUM(
+      'REQUESTED',
+      'ASSIGNED',
+      'PICKED_UP',
+      'EN_ROUTE',
+      'DELIVERED',
+      'COMPLETED',
+      'CANCELED',
+      'DISPUTE'
+    ),
+    defaultValue: 'REQUESTED',
   },
+  disputeFlag: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+  },
+  disputeReason: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+  },
+  // Addresses
   pickupAddress: {
     type: DataTypes.STRING,
+    allowNull: true,
   },
   pickupLat: {
     type: DataTypes.DECIMAL(10, 8),
+    allowNull: true,
   },
   pickupLng: {
     type: DataTypes.DECIMAL(11, 8),
+    allowNull: true,
   },
   deliveryAddress: {
     type: DataTypes.STRING,
@@ -46,33 +87,49 @@ const Order = sequelize.define('Order', {
   },
   deliveryLat: {
     type: DataTypes.DECIMAL(10, 8),
+    allowNull: true,
   },
   deliveryLng: {
     type: DataTypes.DECIMAL(11, 8),
+    allowNull: true,
   },
   notes: {
     type: DataTypes.TEXT,
+    allowNull: true,
   },
-  acceptedAt: {
+  // Timestamps
+  assignedAt: {
     type: DataTypes.DATE,
+    allowNull: true,
   },
-  pickedUpAt: {
+  pickedAt: {
     type: DataTypes.DATE,
+    allowNull: true,
+  },
+  enRouteAt: {
+    type: DataTypes.DATE,
+    allowNull: true,
   },
   deliveredAt: {
     type: DataTypes.DATE,
+    allowNull: true,
   },
-  invoiceImage: {
-    type: DataTypes.STRING,
+  completedAt: {
+    type: DataTypes.DATE,
+    allowNull: true,
   },
-  deliveryCode: {
-    type: DataTypes.STRING(4),
+  canceledAt: {
+    type: DataTypes.DATE,
+    allowNull: true,
   },
-  commission: {
-    type: DataTypes.DECIMAL(10, 2),
-    defaultValue: 1.5,
+}, {
+  timestamps: true, // createdAt, updatedAt
+  hooks: {
+    beforeCreate: (order) => {
+      // Generate 4-digit delivery code
+      order.deliveryCode = Math.floor(1000 + Math.random() * 9000).toString();
+    },
   },
 });
 
 module.exports = Order;
-
