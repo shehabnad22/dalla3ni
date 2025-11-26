@@ -66,6 +66,9 @@ const Driver = sequelize.define('Driver', {
   blockReason: {
     type: DataTypes.STRING,
   },
+  bikeModel: {
+    type: DataTypes.STRING,
+  },
 });
 
 module.exports = Driver;
