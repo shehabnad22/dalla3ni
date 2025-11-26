@@ -5,6 +5,7 @@ const Order = require('./Order');
 const Review = require('./Review');
 const Wallet = require('./Wallet');
 const Settlement = require('./Settlement');
+const AuditLog = require('./AuditLog');
 
 // User - Driver (1:1)
 User.hasOne(Driver, { foreignKey: 'userId' });
@@ -43,4 +44,5 @@ module.exports = {
   Review,
   Wallet,
   Settlement,
+  AuditLog,
 };
