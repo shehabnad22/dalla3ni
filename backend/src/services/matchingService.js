@@ -144,7 +144,7 @@ class MatchingService {
 
   /**
    * Start matching process for an order
-   * Notifies drivers sequentially with timeout
+   * Notifies drivers sequentially with 12-second timeout per driver
    */
   async startMatching(orderId, area) {
     const order = await Order.findByPk(orderId);
@@ -164,7 +164,7 @@ class MatchingService {
       result: 'started',
     });
 
-    // Find available drivers
+    // Find available drivers (up to 5)
     const drivers = await this.findAvailableDrivers(area);
 
     if (drivers.length === 0) {
@@ -180,9 +180,9 @@ class MatchingService {
     }
 
     // Initialize lock for this order
-    orderLocks.set(orderId, { locked: false, assignedTo: null });
+    orderLocks.set(orderId, { locked: false, assignedTo: null, notifiedDrivers: [] });
 
-    // Notify drivers sequentially
+    // Notify drivers sequentially with 12-second timeout
     const notificationResults = [];
     
     for (let i = 0; i < drivers.length; i++) {
@@ -195,7 +195,7 @@ class MatchingService {
         break;
       }
 
-      // Send notification
+      // Send push notification + background notification
       const notification = await this.sendNotification(driver, order);
       notificationResults.push({
         driverId: driver.id,
@@ -204,11 +204,33 @@ class MatchingService {
         position: i + 1,
       });
 
-      // Wait for response or timeout (in real implementation, this would be event-driven)
-      // For now, we send all notifications and first to accept wins
-      if (i < drivers.length - 1) {
-        // Small delay between notifications to give priority to closer drivers
-        await new Promise(resolve => setTimeout(resolve, 500));
+      // Mark driver as notified
+      if (lock) {
+        lock.notifiedDrivers.push(driver.id);
+      }
+
+      // Wait for response or timeout (12 seconds)
+      // In production, this would be event-driven via WebSocket/SSE
+      // For now, we simulate with timeout
+      const timeoutPromise = new Promise((resolve) => {
+        setTimeout(() => {
+          // Check if order was taken during timeout
+          const currentLock = orderLocks.get(orderId);
+          if (!currentLock?.locked) {
+            this.timeoutDriver(orderId, driver.id);
+          }
+          resolve('timeout');
+        }, NOTIFICATION_TIMEOUT);
+      });
+
+      // Wait for timeout or break if order taken
+      await timeoutPromise;
+
+      // Check again if order was taken
+      const currentLock = orderLocks.get(orderId);
+      if (currentLock?.locked) {
+        console.log(`⏹️ Order ${orderId} taken during timeout, stopping notifications`);
+        break;
       }
     }
 

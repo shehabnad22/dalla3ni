@@ -49,6 +49,10 @@ const Driver = sequelize.define('Driver', {
     type: DataTypes.BOOLEAN,
     defaultValue: false,
   },
+  accountStatus: {
+    type: DataTypes.ENUM('PENDING_REVIEW', 'APPROVED', 'REJECTED'),
+    defaultValue: 'PENDING_REVIEW',
+  },
   latitude: {
     type: DataTypes.DECIMAL(10, 8),
   },

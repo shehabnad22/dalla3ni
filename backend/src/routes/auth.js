@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
 const { User, Driver } = require('../models');
+const { generateAccessToken, generateRefreshToken } = require('../middleware/auth');
 
 // Store OTPs temporarily (in production, use Redis)
 const otpStore = new Map();
@@ -81,27 +82,32 @@ router.post('/customer/verify-otp', async (req, res) => {
       user = await User.create({
         name: stored.name,
         phone,
-        email: `${phone}@dalla3ni.app`, // Placeholder email
+        email: `${phone.replace('+', '')}@dalla3ni.app`, // Placeholder email
         password: Math.random().toString(36), // Random password (not used for OTP auth)
         role: 'customer',
         isVerified: true,
+        isActive: true,
       });
+    } else {
+      // Update name if changed
+      if (user.name !== stored.name) {
+        user.name = stored.name;
+        await user.save();
+      }
     }
 
     // Clear OTP
     otpStore.delete(phone);
 
-    // Generate JWT
-    const token = jwt.sign(
-      { userId: user.id, role: user.role },
-      process.env.JWT_SECRET || 'dalla3ni-secret',
-      { expiresIn: '30d' }
-    );
+    // Generate Access & Refresh Tokens
+    const accessToken = generateAccessToken(user);
+    const refreshToken = generateRefreshToken(user);
 
     res.json({
       success: true,
       message: 'تم التحقق بنجاح',
-      token,
+      accessToken,
+      refreshToken,
       user: {
         id: user.id,
         name: user.name,
@@ -129,8 +135,8 @@ router.post('/driver/register', async (req, res) => {
       availabilityEnd,
     } = req.body;
 
-    // Validation
-    if (!fullName || !phone || !idPhoto || !bikePhoto || !plateNumber || !areaTags?.length) {
+    // Validation - Make plateNumber optional for MVP
+    if (!fullName || !phone || !idPhoto || !bikePhoto || !areaTags?.length) {
       return res.status(400).json({ success: false, message: 'جميع الحقول المطلوبة يجب ملؤها' });
     }
 
@@ -155,13 +161,14 @@ router.post('/driver/register', async (req, res) => {
       userId: user.id,
       idImage: idPhoto,
       motorImage: bikePhoto,
-      plateNumber,
+      plateNumber: plateNumber || 'N/A',
       bikeModel: bikeModel || null,
       workingAreas: areaTags,
       workStartTime: availabilityStart,
       workEndTime: availabilityEnd,
       isApproved: false, // PENDING_REVIEW
       isAvailable: false,
+      accountStatus: 'PENDING_REVIEW',
     });
 
     res.status(201).json({
@@ -187,14 +194,13 @@ router.get('/driver/status/:phone', async (req, res) => {
       return res.status(404).json({ success: false, message: 'لم يتم العثور على طلب تسجيل' });
     }
 
-    let status = 'PENDING_REVIEW';
-    if (user.Driver?.isApproved) status = 'APPROVED';
-    else if (user.Driver?.isBlocked) status = 'REJECTED';
+    const status = user.Driver?.accountStatus || 'PENDING_REVIEW';
 
     res.json({
       success: true,
       status,
       isApproved: user.Driver?.isApproved || false,
+      accountStatus: status,
     });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -224,6 +230,99 @@ router.post('/resend-otp', async (req, res) => {
       success: true, 
       message: 'تم إعادة إرسال رمز التحقق',
       debug_otp: process.env.NODE_ENV === 'development' ? otp : undefined,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Refresh Access Token
+router.post('/refresh', async (req, res) => {
+  try {
+    const { refreshToken } = req.body;
+    
+    if (!refreshToken) {
+      return res.status(400).json({ success: false, message: 'Refresh token مطلوب' });
+    }
+
+    try {
+      const decoded = jwt.verify(
+        refreshToken, 
+        process.env.JWT_REFRESH_SECRET || 'dalla3ni-refresh-secret'
+      );
+
+      if (decoded.type !== 'refresh') {
+        return res.status(401).json({ success: false, message: 'Token غير صحيح' });
+      }
+
+      const user = await User.findByPk(decoded.userId);
+      if (!user || !user.isActive) {
+        return res.status(401).json({ success: false, message: 'المستخدم غير موجود أو غير نشط' });
+      }
+
+      const newAccessToken = generateAccessToken(user);
+
+      res.json({
+        success: true,
+        accessToken: newAccessToken,
+      });
+    } catch (error) {
+      return res.status(401).json({ success: false, message: 'Refresh token غير صحيح أو منتهي' });
+    }
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Admin Login
+router.post('/admin/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    // التحقق من بيانات الدخول المحددة
+    const ADMIN_EMAIL = 'shehab.nad22@gmail.com';
+    const ADMIN_PASSWORD = 'Ss123456789';
+
+    if (email !== ADMIN_EMAIL || password !== ADMIN_PASSWORD) {
+      return res.status(401).json({ success: false, message: 'غير مصرح لك بالدخول' });
+    }
+
+    // البحث عن المستخدم أو إنشاؤه
+    let user = await User.findOne({ where: { email, role: 'admin' } });
+    
+    if (!user) {
+      // إنشاء حساب admin إذا لم يكن موجوداً
+      user = await User.create({
+        name: 'Shehab Admin',
+        email: ADMIN_EMAIL,
+        phone: '+963000000000',
+        password: ADMIN_PASSWORD, // سيتم تشفيره تلقائياً
+        role: 'admin',
+        isActive: true,
+        isVerified: true,
+      });
+    } else {
+      // التحقق من كلمة المرور
+      const isValid = await user.comparePassword(password);
+      if (!isValid) {
+        return res.status(401).json({ success: false, message: 'بيانات الدخول غير صحيحة' });
+      }
+    }
+
+    const accessToken = generateAccessToken(user);
+    const refreshToken = generateRefreshToken(user);
+
+    res.json({
+      success: true,
+      message: 'تم تسجيل الدخول بنجاح',
+      accessToken,
+      refreshToken,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      },
     });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });

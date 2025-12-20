@@ -10,9 +10,10 @@ const menuItems = [
   { id: 'settlements', label: 'التسويات', icon: '💰' },
   { id: 'ratings', label: 'التقييمات', icon: '⭐' },
   { id: 'audit', label: 'سجل العمليات', icon: '📋' },
+  { id: 'settings', label: 'الإعدادات', icon: '⚙️' },
 ];
 
-export default function Sidebar({ currentPage, onPageChange }) {
+export default function Sidebar({ currentPage, onPageChange, user }) {
   return (
     <aside className="sidebar">
       <div className="sidebar-header">
@@ -38,10 +39,19 @@ export default function Sidebar({ currentPage, onPageChange }) {
         <div className="admin-info">
           <div className="admin-avatar">م</div>
           <div>
-            <div className="admin-name">المدير</div>
+            <div className="admin-name">{user?.name || 'المدير'}</div>
             <div className="admin-role">مدير النظام</div>
           </div>
         </div>
+        <button 
+          className="logout-button"
+          onClick={() => {
+            localStorage.removeItem('admin_token');
+            window.location.reload();
+          }}
+        >
+          تسجيل الخروج
+        </button>
       </div>
     </aside>
   );

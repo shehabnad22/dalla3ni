@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-
-const API_URL = 'http://localhost:3000/api';
+import { API_URL } from '../config/api';
+import { authenticatedFetch } from '../auth/auth';
 
 export default function DashboardPage() {
   const [stats, setStats] = useState({});
@@ -12,7 +12,7 @@ export default function DashboardPage() {
 
   const fetchStats = async () => {
     try {
-      const res = await fetch(`${API_URL}/admin/stats`);
+      const res = await authenticatedFetch(`${API_URL}/admin/stats`);
       const data = await res.json();
       if (data.success) setStats(data.stats);
     } catch (error) {

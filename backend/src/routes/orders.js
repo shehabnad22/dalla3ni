@@ -3,11 +3,49 @@ const router = express.Router();
 const { Order, Driver, User } = require('../models');
 const matchingService = require('../services/matchingService');
 const settlementService = require('../services/settlementService');
+const { featureFlags } = require('../config/featureFlags');
+const { validateOrder, validateDriverAccept, validatePickup, validateDeliver, validateComplete, handleValidationErrors } = require('../middleware/validator');
 
 // ============================================
 // POST /orders - Create new order
 // ============================================
-router.post('/', async (req, res) => {
+/**
+ * @swagger
+ * /orders:
+ *   post:
+ *     summary: Create a new order
+ *     tags: [Orders]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - customerId
+ *               - itemsText
+ *               - deliveryAddress
+ *             properties:
+ *               customerId:
+ *                 type: string
+ *                 format: uuid
+ *               itemsText:
+ *                 type: string
+ *               estimatedPrice:
+ *                 type: number
+ *               deliveryAddress:
+ *                 type: string
+ *               area:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: Order created successfully
+ *       400:
+ *         description: Validation error
+ */
+router.post('/', validateOrder, handleValidationErrors, async (req, res) => {
   try {
     const { 
       customerId, 
@@ -22,26 +60,49 @@ router.post('/', async (req, res) => {
     } = req.body;
 
     // Validation
-    if (!customerId || !itemsText || !deliveryAddress) {
+    if (!itemsText || !deliveryAddress) {
       return res.status(400).json({ 
         success: false, 
-        message: 'customerId, itemsText, و deliveryAddress مطلوبة' 
+        message: 'itemsText و deliveryAddress مطلوبة' 
       });
+    }
+
+    // If no customerId, try to find by phone or create anonymous order
+    let finalCustomerId = customerId;
+    if (!finalCustomerId) {
+      // Try to get customer from request (if authenticated)
+      // For MVP, create order without customerId or create anonymous customer
+      const anonymousUser = await User.findOne({ where: { phone: '+963000000000' } });
+      if (anonymousUser) {
+        finalCustomerId = anonymousUser.id;
+      } else {
+        // Create anonymous customer for orders without customerId
+        const anonUser = await User.create({
+          name: 'زبون غير مسجل',
+          phone: '+963000000000',
+          email: 'anonymous@dalla3ni.app',
+          password: Math.random().toString(36),
+          role: 'customer',
+          isVerified: false,
+          isActive: true,
+        });
+        finalCustomerId = anonUser.id;
+      }
     }
 
     // Create order
     const order = await Order.create({
-      customerId,
+      customerId: finalCustomerId,
       itemsText,
       estimatedPrice: estimatedPrice || null,
       deliveryAddress,
-      deliveryLat,
-      deliveryLng,
-      pickupAddress,
+      deliveryLat: deliveryLat ? parseFloat(deliveryLat) : null,
+      deliveryLng: deliveryLng ? parseFloat(deliveryLng) : null,
+      pickupAddress: pickupAddress || deliveryAddress,
       notes,
       status: 'REQUESTED',
       deliveryFee: 1.5,
-      commissionAmount: 1.5,
+      commissionAmount: featureFlags.commission_amount,
     });
 
     // Start matching process
@@ -109,43 +170,23 @@ router.post('/:id/assign', async (req, res) => {
 });
 
 // ============================================
-// POST /orders/:id/accept - Driver accepts order
+// POST /orders/:id/accept - Driver accepts order (atomic lock)
 // ============================================
 router.post('/:id/accept', async (req, res) => {
   try {
     const { driverId } = req.body;
-    const order = await Order.findByPk(req.params.id);
-
-    if (!order) {
-      return res.status(404).json({ success: false, message: 'الطلب غير موجود' });
+    
+    // Use matching service for atomic lock
+    const result = await matchingService.acceptOrder(req.params.id, driverId);
+    
+    if (!result.success) {
+      return res.status(400).json(result);
     }
 
-    // Check if order is still available
-    if (order.status !== 'REQUESTED' && order.status !== 'ASSIGNED') {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'الطلب تم قبوله من سائق آخر أو لم يعد متاحاً' 
-      });
-    }
-
-    // Check driver status
-    const driver = await Driver.findByPk(driverId);
-    if (!driver || driver.isBlocked) {
-      return res.status(403).json({ success: false, message: 'لا يمكنك قبول الطلبات حالياً' });
-    }
-
-    // Assign order to driver
-    order.driverId = driverId;
-    order.status = 'ASSIGNED';
-    order.assignedAt = new Date();
-    await order.save();
-
-    // Update driver availability
-    driver.isAvailable = false;
-    await driver.save();
-
-    // Notify customer
-    // TODO: Send push notification
+    // Get order with customer info
+    const order = await Order.findByPk(req.params.id, {
+      include: [{ model: User, as: 'customer', attributes: ['id', 'name', 'phone'] }],
+    });
 
     res.json({
       success: true,
@@ -156,7 +197,10 @@ router.post('/:id/accept', async (req, res) => {
         deliveryCode: order.deliveryCode,
         itemsText: order.itemsText,
         deliveryAddress: order.deliveryAddress,
-        customer: await User.findByPk(order.customerId, { attributes: ['name', 'phone'] }),
+        pickupAddress: order.pickupAddress,
+        estimatedPrice: order.estimatedPrice,
+        deliveryFee: order.deliveryFee,
+        customer: order.customer,
       },
     });
   } catch (error) {
@@ -296,11 +340,11 @@ router.post('/:id/deliver', async (req, res) => {
 });
 
 // ============================================
-// POST /orders/:id/complete - Complete order (after rating)
+// POST /orders/:id/complete - Complete order (after rating - RATING REQUIRED)
 // ============================================
 router.post('/:id/complete', async (req, res) => {
   try {
-    const { rating, comment } = req.body;
+    const { rating, comment, adminOverride } = req.body;
     const order = await Order.findByPk(req.params.id);
 
     if (!order) {
@@ -309,6 +353,22 @@ router.post('/:id/complete', async (req, res) => {
 
     if (order.status !== 'DELIVERED') {
       return res.status(400).json({ success: false, message: 'الطلب لم يتم تسليمه بعد' });
+    }
+
+    // Rating is REQUIRED (unless admin override)
+    if (!rating && !adminOverride) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'يجب إرسال التقييم لإغلاق الطلب (rating: 1-5)' 
+      });
+    }
+
+    // Validate rating range
+    if (rating && (rating < 1 || rating > 5)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'التقييم يجب أن يكون بين 1 و 5' 
+      });
     }
 
     // Complete order
@@ -329,7 +389,7 @@ router.post('/:id/complete', async (req, res) => {
       await Driver.update({ isAvailable: true }, { where: { id: order.driverId } });
     }
 
-    // Save rating
+    // Save rating (required)
     if (rating && order.driverId) {
       const { Review } = require('../models');
       await Review.create({
@@ -337,7 +397,7 @@ router.post('/:id/complete', async (req, res) => {
         customerId: order.customerId,
         driverId: order.driverId,
         rating,
-        comment,
+        comment: comment || null,
       });
 
       // Update driver rating
@@ -358,6 +418,7 @@ router.post('/:id/complete', async (req, res) => {
         completedAt: order.completedAt,
         driverShare: order.driverShare,
         commissionAmount: order.commissionAmount,
+        rating: rating || null,
       },
     });
   } catch (error) {

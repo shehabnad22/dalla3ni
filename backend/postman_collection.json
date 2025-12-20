@@ -1,0 +1,478 @@
+{
+  "info": {
+    "name": "Dalla3ni API",
+    "description": "API collection for Dalla3ni delivery service",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "version": "1.0.0"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000/api",
+      "type": "string"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Customer - Request OTP",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"0791234567\",\n  \"name\": \"محمد أحمد\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/customer/request-otp",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "customer", "request-otp"]
+            }
+          }
+        },
+        {
+          "name": "Customer - Verify OTP",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"0791234567\",\n  \"otp\": \"123456\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/customer/verify-otp",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "customer", "verify-otp"]
+            }
+          }
+        },
+        {
+          "name": "Admin Login",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@dalla3ni.com\",\n  \"password\": \"Admin123!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/admin/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "admin", "login"]
+            }
+          }
+        },
+        {
+          "name": "Refresh Token",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/refresh",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "refresh"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Orders",
+      "item": [
+        {
+          "name": "Create Order",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerId\": \"550e8400-e29b-41d4-a716-446655440000\",\n  \"itemsText\": \"2 شاورما دجاج + بيبسي كبير من مطعم الشام\",\n  \"estimatedPrice\": 5.50,\n  \"deliveryAddress\": \"شارع الجامعة، عمارة 15\",\n  \"area\": \"وسط البلد\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/orders",
+              "host": ["{{baseUrl}}"],
+              "path": ["orders"]
+            }
+          }
+        },
+        {
+          "name": "Driver Accept Order",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"driverId\": \"770e8400-e29b-41d4-a716-446655440002\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/orders/:orderId/accept",
+              "host": ["{{baseUrl}}"],
+              "path": ["orders", ":orderId", "accept"],
+              "variable": [
+                {
+                  "key": "orderId",
+                  "value": "ORDER_ID_HERE"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Driver Pickup (Upload Invoice)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"driverId\": \"770e8400-e29b-41d4-a716-446655440002\",\n  \"invoiceImageUrl\": \"https://storage.dalla3ni.com/invoices/invoice_123.jpg\",\n  \"actualPrice\": 5.75\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/orders/:orderId/pickup",
+              "host": ["{{baseUrl}}"],
+              "path": ["orders", ":orderId", "pickup"],
+              "variable": [
+                {
+                  "key": "orderId",
+                  "value": "ORDER_ID_HERE"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Driver Deliver",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"driverId\": \"770e8400-e29b-41d4-a716-446655440002\",\n  \"deliveryCode\": \"1234\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/orders/:orderId/deliver",
+              "host": ["{{baseUrl}}"],
+              "path": ["orders", ":orderId", "deliver"],
+              "variable": [
+                {
+                  "key": "orderId",
+                  "value": "ORDER_ID_HERE"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Complete Order (Rating Required)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rating\": 5,\n  \"comment\": \"توصيل سريع وممتاز!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/orders/:orderId/complete",
+              "host": ["{{baseUrl}}"],
+              "path": ["orders", ":orderId", "complete"],
+              "variable": [
+                {
+                  "key": "orderId",
+                  "value": "ORDER_ID_HERE"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "List Orders",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/orders?status=REQUESTED&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["orders"],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "REQUESTED"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin",
+      "item": [
+        {
+          "name": "Dashboard Stats",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/stats",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "stats"]
+            }
+          }
+        },
+        {
+          "name": "Get All Drivers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/drivers",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "drivers"]
+            }
+          }
+        },
+        {
+          "name": "Approve Driver",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"adminId\": \"admin-1\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/drivers/:driverId/approve",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "drivers", ":driverId", "approve"],
+              "variable": [
+                {
+                  "key": "driverId",
+                  "value": "DRIVER_ID_HERE"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Block Driver",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"حظر يدوي\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/drivers/:driverId/block",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "drivers", ":driverId", "block"],
+              "variable": [
+                {
+                  "key": "driverId",
+                  "value": "DRIVER_ID_HERE"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Settlements",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/settlements/daily?date=2025-01-15",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "settlements", "daily"],
+              "query": [
+                {
+                  "key": "date",
+                  "value": "2025-01-15"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Mark Settlement as Paid",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"adminId\": \"admin-1\",\n  \"amount\": 25.50\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/settlements/:driverId/pay",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "settlements", ":driverId", "pay"],
+              "variable": [
+                {
+                  "key": "driverId",
+                  "value": "DRIVER_ID_HERE"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Disputes",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/disputes",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "disputes"]
+            }
+          }
+        },
+        {
+          "name": "Resolve Dispute",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resolution\": \"refund\",\n  \"notes\": \"استرداد كامل للزبون\",\n  \"adminId\": \"admin-1\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/disputes/:orderId/resolve",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "disputes", ":orderId", "resolve"],
+              "variable": [
+                {
+                  "key": "orderId",
+                  "value": "ORDER_ID_HERE"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Settings",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/settings",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "settings"]
+            }
+          }
+        },
+        {
+          "name": "Update Settings",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"commissionAmount\": 2500,\n  \"storesEnabled\": false,\n  \"dailySettlementTime\": \"23:59\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/settings",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "settings"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
+

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-
-const API_URL = 'http://localhost:3000/api';
+import { API_URL } from '../config/api';
+import { authenticatedFetch } from '../auth/auth';
 
 export default function SettlementsPage() {
   const [settlements, setSettlements] = useState({ drivers: [], totalPending: 0 });
@@ -14,7 +14,7 @@ export default function SettlementsPage() {
   const fetchSettlements = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_URL}/admin/settlements/daily?date=${selectedDate}`);
+      const res = await authenticatedFetch(`${API_URL}/admin/settlements/daily?date=${selectedDate}`);
       const data = await res.json();
       if (data.success) {
         setSettlements(data);
@@ -29,10 +29,9 @@ export default function SettlementsPage() {
     if (!window.confirm(`هل تريد تأكيد تسوية ${driverName}؟`)) return;
 
     try {
-      const res = await fetch(`${API_URL}/admin/settlements/${driverId}/pay`, {
+      const res = await authenticatedFetch(`${API_URL}/admin/settlements/${driverId}/pay`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ adminId: 'admin-1' }), // TODO: Get from auth
+        body: JSON.stringify({}),
       });
       const data = await res.json();
       if (data.success) {
@@ -44,19 +43,74 @@ export default function SettlementsPage() {
     }
   };
 
+  const exportToCSV = () => {
+    if (!settlements.drivers || settlements.drivers.length === 0) {
+      alert('لا توجد بيانات للتصدير');
+      return;
+    }
+
+    // CSV Header
+    const headers = ['السائق', 'الهاتف', 'المبلغ المستحق', 'الحالة'];
+    const csvRows = [headers.join(',')];
+
+    // CSV Data
+    settlements.drivers.forEach(driver => {
+      const row = [
+        driver.name || '',
+        driver.phone || '',
+        parseFloat(driver.pendingSettlement || 0).toFixed(2),
+        driver.isBlocked ? 'محظور' : 'نشط',
+      ];
+      csvRows.push(row.join(','));
+    });
+
+    // Create CSV content
+    const csvContent = csvRows.join('\n');
+    const BOM = '\uFEFF'; // UTF-8 BOM for Excel
+    const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    
+    link.setAttribute('href', url);
+    link.setAttribute('download', `settlements_${selectedDate}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div style={{ padding: '24px', direction: 'rtl', fontFamily: 'Cairo, sans-serif' }}>
       <h1 style={{ marginBottom: '24px' }}>التسويات اليومية</h1>
 
-      {/* Date Picker */}
-      <div style={{ marginBottom: '24px', display: 'flex', gap: '16px', alignItems: 'center' }}>
-        <label>التاريخ:</label>
-        <input
-          type="date"
-          value={selectedDate}
-          onChange={(e) => setSelectedDate(e.target.value)}
-          style={{ padding: '8px 16px', borderRadius: '8px', border: '1px solid #ddd' }}
-        />
+      {/* Date Picker & Export */}
+      <div style={{ marginBottom: '24px', display: 'flex', gap: '16px', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+          <label>التاريخ:</label>
+          <input
+            type="date"
+            value={selectedDate}
+            onChange={(e) => setSelectedDate(e.target.value)}
+            style={{ padding: '8px 16px', borderRadius: '8px', border: '1px solid #ddd' }}
+          />
+        </div>
+        <button
+          onClick={exportToCSV}
+          style={{
+            background: '#2196F3',
+            color: 'white',
+            border: 'none',
+            padding: '10px 24px',
+            borderRadius: '8px',
+            cursor: 'pointer',
+            fontWeight: 'bold',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+          }}
+        >
+          📥 Export CSV
+        </button>
       </div>
 
       {/* Summary Card */}

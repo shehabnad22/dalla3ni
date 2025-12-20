@@ -1,49 +1,91 @@
 import React, { useState, useEffect } from 'react';
-
-const API_URL = 'http://localhost:3000/api';
+import { API_URL } from '../config/api';
+import { authenticatedFetch } from '../auth/auth';
 
 const statusLabels = {
-  pending: { label: 'معلق', class: 'badge-warning' },
-  matching: { label: 'جاري البحث', class: 'badge-info' },
-  accepted: { label: 'مقبول', class: 'badge-info' },
-  picked_up: { label: 'تم الاستلام', class: 'badge-info' },
-  delivered: { label: 'تم التوصيل', class: 'badge-success' },
-  cancelled: { label: 'ملغي', class: 'badge-danger' },
+  REQUESTED: { label: 'معلق', class: 'badge-warning' },
+  ASSIGNED: { label: 'مقبول', class: 'badge-info' },
+  PICKED_UP: { label: 'تم الاستلام', class: 'badge-info' },
+  EN_ROUTE: { label: 'في الطريق', class: 'badge-info' },
+  DELIVERED: { label: 'تم التوصيل', class: 'badge-success' },
+  COMPLETED: { label: 'مكتمل', class: 'badge-success' },
+  CANCELED: { label: 'ملغي', class: 'badge-danger' },
+  DISPUTE: { label: 'نزاع', class: 'badge-danger' },
 };
 
 export default function OrdersPage() {
   const [orders, setOrders] = useState([]);
   const [filter, setFilter] = useState('all');
+  const [dateFilter, setDateFilter] = useState('');
+  const [driverFilter, setDriverFilter] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
+  const [selectedOrder, setSelectedOrder] = useState(null);
 
   useEffect(() => {
-    // Mock data for now
-    setOrders([
-      { id: '1001', customer: 'محمد أحمد', driver: 'أحمد علي', itemsText: '2 شاورما + بيبسي', status: 'delivered', price: 5.50, createdAt: '2025-11-26T10:30:00' },
-      { id: '1002', customer: 'سارة خالد', driver: null, itemsText: 'بيتزا كبيرة', status: 'matching', price: 8.00, createdAt: '2025-11-26T11:15:00' },
-      { id: '1003', customer: 'علي حسن', driver: 'محمود سعيد', itemsText: 'وجبة برجر', status: 'picked_up', price: 4.50, createdAt: '2025-11-26T11:45:00' },
-    ]);
-    setLoading(false);
-  }, []);
+    fetchOrders();
+  }, [filter, dateFilter, driverFilter]);
 
-  const filteredOrders = filter === 'all' ? orders : orders.filter(o => o.status === filter);
+  const fetchOrders = async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (filter !== 'all') params.append('status', filter);
+      if (dateFilter) params.append('date', dateFilter);
+      if (driverFilter) params.append('driverId', driverFilter);
+
+      const res = await authenticatedFetch(`${API_URL}/admin/orders?${params}`);
+      const data = await res.json();
+      if (data.success) {
+        setOrders(data.orders || []);
+      }
+    } catch (error) {
+      console.error('Error fetching orders:', error);
+    }
+    setLoading(false);
+  };
+
+  const filteredOrders = orders.filter(order => {
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase();
+      return (
+        order.id?.toLowerCase().includes(term) ||
+        order.itemsText?.toLowerCase().includes(term) ||
+        order.customer?.name?.toLowerCase().includes(term)
+      );
+    }
+    return true;
+  });
 
   return (
     <div>
       <h1 className="page-title">الطلبات</h1>
 
-      <div className="filters">
-        <select value={filter} onChange={e => setFilter(e.target.value)}>
+      <div className="filters" style={{ display: 'flex', gap: '12px', marginBottom: '24px', flexWrap: 'wrap' }}>
+        <select value={filter} onChange={e => setFilter(e.target.value)} style={{ padding: '8px 16px', borderRadius: '8px', border: '1px solid #ddd' }}>
           <option value="all">جميع الطلبات</option>
-          <option value="pending">معلقة</option>
-          <option value="matching">جاري البحث</option>
-          <option value="accepted">مقبولة</option>
-          <option value="picked_up">تم الاستلام</option>
-          <option value="delivered">تم التوصيل</option>
-          <option value="cancelled">ملغية</option>
+          <option value="REQUESTED">معلقة</option>
+          <option value="ASSIGNED">مقبولة</option>
+          <option value="PICKED_UP">تم الاستلام</option>
+          <option value="EN_ROUTE">في الطريق</option>
+          <option value="DELIVERED">تم التوصيل</option>
+          <option value="COMPLETED">مكتملة</option>
+          <option value="CANCELED">ملغية</option>
+          <option value="DISPUTE">نزاعات</option>
         </select>
-        <input type="date" />
-        <input type="text" placeholder="بحث برقم الطلب..." />
+        <input 
+          type="date" 
+          value={dateFilter}
+          onChange={e => setDateFilter(e.target.value)}
+          style={{ padding: '8px 16px', borderRadius: '8px', border: '1px solid #ddd' }}
+        />
+        <input 
+          type="text" 
+          placeholder="بحث برقم الطلب أو المحتوى..." 
+          value={searchTerm}
+          onChange={e => setSearchTerm(e.target.value)}
+          style={{ padding: '8px 16px', borderRadius: '8px', border: '1px solid #ddd', flex: 1, minWidth: '200px' }}
+        />
       </div>
 
       <div className="card">
@@ -63,25 +105,91 @@ export default function OrdersPage() {
           <tbody>
             {filteredOrders.map(order => (
               <tr key={order.id}>
-                <td>#{order.id}</td>
-                <td>{order.customer}</td>
+                <td>#{order.id?.slice(0, 8)}</td>
+                <td>{order.customer?.name || '-'}</td>
                 <td style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>{order.itemsText}</td>
-                <td>{order.driver || <span className="text-muted">-</span>}</td>
-                <td>{order.price?.toFixed(2)} د</td>
+                <td>{order.Driver?.User?.name || <span className="text-muted">-</span>}</td>
+                <td>{parseFloat(order.estimatedPrice || 0).toFixed(2)} د</td>
                 <td>
-                  <span className={`badge ${statusLabels[order.status]?.class}`}>
-                    {statusLabels[order.status]?.label}
+                  <span className={`badge ${statusLabels[order.status]?.class || 'badge-info'}`}>
+                    {statusLabels[order.status]?.label || order.status}
                   </span>
                 </td>
                 <td>{new Date(order.createdAt).toLocaleString('ar')}</td>
                 <td>
-                  <button className="btn btn-sm btn-primary">عرض</button>
+                  <button 
+                    className="btn btn-sm btn-primary"
+                    onClick={() => setSelectedOrder(order)}
+                  >
+                    عرض
+                  </button>
+                  {order.invoiceImageUrl && (
+                    <button 
+                      className="btn btn-sm btn-success"
+                      style={{ marginRight: '8px' }}
+                      onClick={() => window.open(order.invoiceImageUrl, '_blank')}
+                    >
+                      📄 فاتورة
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+
+      {/* Order Details Modal */}
+      {selectedOrder && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+        }} onClick={() => setSelectedOrder(null)}>
+          <div style={{
+            background: 'white',
+            padding: '24px',
+            borderRadius: '16px',
+            maxWidth: '600px',
+            width: '90%',
+            maxHeight: '80vh',
+            overflow: 'auto',
+          }} onClick={e => e.stopPropagation()}>
+            <h2>تفاصيل الطلب #{selectedOrder.id?.slice(0, 8)}</h2>
+            <div style={{ marginTop: '16px' }}>
+              <p><strong>الزبون:</strong> {selectedOrder.customer?.name} ({selectedOrder.customer?.phone})</p>
+              <p><strong>الطلب:</strong> {selectedOrder.itemsText}</p>
+              <p><strong>السائق:</strong> {selectedOrder.Driver?.User?.name || '-'}</p>
+              <p><strong>السعر:</strong> {parseFloat(selectedOrder.estimatedPrice || 0).toFixed(2)} دينار</p>
+              <p><strong>رسوم التوصيل:</strong> {parseFloat(selectedOrder.deliveryFee || 0).toFixed(2)} دينار</p>
+              <p><strong>الحالة:</strong> {statusLabels[selectedOrder.status]?.label}</p>
+              {selectedOrder.invoiceImageUrl && (
+                <div style={{ marginTop: '16px' }}>
+                  <strong>صورة الفاتورة:</strong>
+                  <img 
+                    src={selectedOrder.invoiceImageUrl} 
+                    alt="Invoice" 
+                    style={{ maxWidth: '100%', marginTop: '8px', borderRadius: '8px' }}
+                  />
+                </div>
+              )}
+            </div>
+            <button 
+              onClick={() => setSelectedOrder(null)}
+              style={{ marginTop: '16px', padding: '8px 24px', background: '#6C63FF', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}
+            >
+              إغلاق
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

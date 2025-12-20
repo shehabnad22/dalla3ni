@@ -1,43 +1,81 @@
 import React, { useState, useEffect } from 'react';
-
-const API_URL = 'http://localhost:3000/api';
+import { API_URL } from '../config/api';
+import { authenticatedFetch } from '../auth/auth';
 
 export default function DriversPage() {
   const [drivers, setDrivers] = useState([]);
   const [filter, setFilter] = useState('all');
 
   useEffect(() => {
-    // Mock data
-    setDrivers([
-      { id: '1', name: 'أحمد محمد', phone: '0791234567', plateNumber: '12-34567', rating: 4.8, totalDeliveries: 156, isAvailable: true, isBlocked: false, isApproved: true, pendingSettlement: 12.5 },
-      { id: '2', name: 'محمود سعيد', phone: '0797654321', plateNumber: '98-76543', rating: 4.5, totalDeliveries: 89, isAvailable: false, isBlocked: false, isApproved: true, pendingSettlement: 0 },
-      { id: '3', name: 'خالد علي', phone: '0781112223', plateNumber: '55-44332', rating: 3.9, totalDeliveries: 45, isAvailable: false, isBlocked: true, isApproved: true, pendingSettlement: 52.5 },
-      { id: '4', name: 'عمر حسن', phone: '0789998887', plateNumber: '11-22334', rating: 0, totalDeliveries: 0, isAvailable: false, isBlocked: false, isApproved: false, pendingSettlement: 0 },
-    ]);
-  }, []);
+    fetchDrivers();
+  }, [filter]);
+
+  const fetchDrivers = async () => {
+    try {
+      const res = await authenticatedFetch(`${API_URL}/admin/drivers`);
+      const data = await res.json();
+      if (data.success) {
+        setDrivers(data.drivers || []);
+      }
+    } catch (error) {
+      console.error('Error fetching drivers:', error);
+    }
+  };
 
   const getStatusBadge = (driver) => {
-    if (!driver.isApproved) return <span className="badge badge-warning">بانتظار الموافقة</span>;
+    if (!driver.isApproved || driver.accountStatus === 'PENDING_REVIEW') {
+      return <span className="badge badge-warning">بانتظار الموافقة</span>;
+    }
     if (driver.isBlocked) return <span className="badge badge-danger">محظور</span>;
     if (driver.isAvailable) return <span className="badge badge-success">متصل</span>;
     return <span className="badge badge-info">غير متصل</span>;
+  };
+
+  const handleApprove = async (driverId) => {
+    if (!window.confirm('هل تريد الموافقة على هذا السائق؟')) return;
+    try {
+      const res = await authenticatedFetch(`${API_URL}/admin/drivers/${driverId}/approve`, {
+        method: 'POST',
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert('تمت الموافقة بنجاح');
+        fetchDrivers();
+      } else {
+        alert(data.message || 'حدث خطأ');
+      }
+    } catch (error) {
+      alert('حدث خطأ في الاتصال');
+    }
+  };
+
+  const handleBlock = async (driverId) => {
+    if (!window.confirm('هل تريد حظر هذا السائق؟')) return;
+    try {
+      const res = await authenticatedFetch(`${API_URL}/admin/drivers/${driverId}/block`, {
+        method: 'POST',
+        body: JSON.stringify({ reason: 'حظر يدوي من الإدارة' }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert('تم الحظر بنجاح');
+        fetchDrivers();
+      } else {
+        alert(data.message || 'حدث خطأ');
+      }
+    } catch (error) {
+      alert('حدث خطأ في الاتصال');
+    }
   };
 
   const filteredDrivers = drivers.filter(d => {
     if (filter === 'all') return true;
     if (filter === 'online') return d.isAvailable;
     if (filter === 'blocked') return d.isBlocked;
-    if (filter === 'pending') return !d.isApproved;
+    if (filter === 'pending') return !d.isApproved || d.accountStatus === 'PENDING_REVIEW';
     return true;
   });
-
-  const handleApprove = (id) => {
-    setDrivers(drivers.map(d => d.id === id ? { ...d, isApproved: true } : d));
-  };
-
-  const handleUnblock = (id) => {
-    setDrivers(drivers.map(d => d.id === id ? { ...d, isBlocked: false } : d));
-  };
 
   return (
     <div>
@@ -71,24 +109,29 @@ export default function DriversPage() {
               <tr key={driver.id}>
                 <td>
                   <div className="flex">
-                    <div className="avatar">{driver.name[0]}</div>
+                    <div className="avatar">{(driver.User?.name || 'س')[0]}</div>
                     <div>
-                      <div>{driver.name}</div>
-                      <div className="text-muted">{driver.phone}</div>
+                      <div>{driver.User?.name || '-'}</div>
+                      <div className="text-muted">{driver.User?.phone || '-'}</div>
                     </div>
                   </div>
                 </td>
-                <td>{driver.plateNumber}</td>
-                <td>⭐ {driver.rating}</td>
-                <td>{driver.totalDeliveries}</td>
-                <td style={{ color: driver.pendingSettlement > 0 ? '#e53935' : '#333' }}>
-                  {driver.pendingSettlement.toFixed(2)} د
+                <td>{driver.plateNumber || '-'}</td>
+                <td>⭐ {parseFloat(driver.rating || 0).toFixed(1)}</td>
+                <td>{driver.totalDeliveries || 0}</td>
+                <td style={{ color: parseFloat(driver.pendingSettlement || 0) > 0 ? '#e53935' : '#333' }}>
+                  {parseFloat(driver.pendingSettlement || 0).toFixed(2)} د
                 </td>
                 <td>{getStatusBadge(driver)}</td>
                 <td>
-                  {!driver.isApproved && (
+                  {(!driver.isApproved || driver.accountStatus === 'PENDING_REVIEW') && (
                     <button className="btn btn-sm btn-success" onClick={() => handleApprove(driver.id)}>
                       موافقة
+                    </button>
+                  )}
+                  {!driver.isBlocked && driver.isApproved && (
+                    <button className="btn btn-sm btn-danger" onClick={() => handleBlock(driver.id)}>
+                      حظر
                     </button>
                   )}
                   {driver.isBlocked && (

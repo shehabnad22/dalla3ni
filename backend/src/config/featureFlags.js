@@ -8,6 +8,9 @@ const featureFlags = {
   // Centers feature - DISABLED  
   centers_enabled: process.env.CENTERS_ENABLED === 'true' || false,
   
+  // Commission amount (configurable from Admin)
+  commission_amount: parseFloat(process.env.COMMISSION_AMOUNT) || 2500,
+  
   // Active features
   driver_registration: true,
   customer_registration: true,

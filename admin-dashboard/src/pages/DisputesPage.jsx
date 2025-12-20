@@ -1,20 +1,54 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { API_URL } from '../config/api';
+import { authenticatedFetch } from '../auth/auth';
 
 export default function DisputesPage() {
-  const [disputes, setDisputes] = useState([
-    { id: '1', orderId: '1005', customer: 'فاطمة أحمد', driver: 'خالد علي', type: 'تأخر التوصيل', description: 'الطلب تأخر ساعة كاملة', status: 'open', createdAt: '2025-11-26T09:00:00' },
-    { id: '2', orderId: '1008', customer: 'عمر سعيد', driver: 'أحمد محمد', type: 'طلب ناقص', description: 'لم يصل المشروب مع الطلب', status: 'investigating', createdAt: '2025-11-25T14:30:00' },
-    { id: '3', orderId: '1002', customer: 'ليلى خالد', driver: 'محمود سعيد', type: 'سوء تعامل', description: 'السائق كان غير مهذب', status: 'resolved', createdAt: '2025-11-24T16:00:00', resolution: 'تم تحذير السائق' },
-  ]);
+  const [disputes, setDisputes] = useState([]);
+  const [selectedDispute, setSelectedDispute] = useState(null);
+  const [resolution, setResolution] = useState({ type: 'no-action', notes: '' });
+
+  useEffect(() => {
+    fetchDisputes();
+  }, []);
+
+  const fetchDisputes = async () => {
+    try {
+      const res = await authenticatedFetch(`${API_URL}/admin/disputes`);
+      const data = await res.json();
+      if (data.success) {
+        setDisputes(data.disputes || []);
+      }
+    } catch (error) {
+      console.error('Error fetching disputes:', error);
+    }
+  };
 
   const statusLabels = {
-    open: { label: 'مفتوح', class: 'badge-danger' },
+    DISPUTE: { label: 'نزاع', class: 'badge-danger' },
     investigating: { label: 'قيد التحقيق', class: 'badge-warning' },
     resolved: { label: 'تم الحل', class: 'badge-success' },
   };
 
-  const handleResolve = (id) => {
-    setDisputes(disputes.map(d => d.id === id ? { ...d, status: 'resolved' } : d));
+  const handleResolve = async (disputeId) => {
+    if (!window.confirm('هل تريد حل هذا النزاع؟')) return;
+    
+    try {
+      const res = await authenticatedFetch(`${API_URL}/admin/disputes/${disputeId}/resolve`, {
+        method: 'POST',
+        body: JSON.stringify({
+          resolution: resolution.type,
+          notes: resolution.notes,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert('تم حل النزاع بنجاح');
+        fetchDisputes();
+        setSelectedDispute(null);
+      }
+    } catch (error) {
+      alert('حدث خطأ');
+    }
   };
 
   return (
@@ -53,30 +87,114 @@ export default function DisputesPage() {
           <tbody>
             {disputes.map(dispute => (
               <tr key={dispute.id}>
-                <td>#{dispute.id}</td>
-                <td>#{dispute.orderId}</td>
-                <td>{dispute.customer}</td>
-                <td>{dispute.driver}</td>
-                <td>{dispute.type}</td>
-                <td style={{ maxWidth: 200 }}>{dispute.description}</td>
+                <td>#{dispute.id?.slice(0, 8)}</td>
+                <td>#{dispute.orderId?.slice(0, 8) || dispute.Order?.id?.slice(0, 8)}</td>
+                <td>{dispute.Order?.customer?.name || '-'}</td>
+                <td>{dispute.Order?.Driver?.User?.name || '-'}</td>
+                <td>{dispute.disputeReason || 'غير محدد'}</td>
+                <td style={{ maxWidth: 200 }}>{dispute.disputeReason || '-'}</td>
                 <td>
-                  <span className={`badge ${statusLabels[dispute.status].class}`}>
-                    {statusLabels[dispute.status].label}
+                  <span className={`badge ${statusLabels[dispute.status || 'DISPUTE']?.class || 'badge-danger'}`}>
+                    {statusLabels[dispute.status || 'DISPUTE']?.label || 'نزاع'}
                   </span>
                 </td>
                 <td>
                   {dispute.status !== 'resolved' && (
-                    <button className="btn btn-sm btn-success" onClick={() => handleResolve(dispute.id)}>
+                    <button className="btn btn-sm btn-success" onClick={() => setSelectedDispute(dispute)}>
                       حل النزاع
                     </button>
                   )}
-                  <button className="btn btn-sm" style={{ marginRight: 8 }}>تفاصيل</button>
+                  <button 
+                    className="btn btn-sm" 
+                    style={{ marginRight: 8 }}
+                    onClick={() => {
+                      if (dispute.Order?.invoiceImageUrl) {
+                        window.open(dispute.Order.invoiceImageUrl, '_blank');
+                      }
+                    }}
+                  >
+                    عرض الأدلة
+                  </button>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+
+      {/* Resolution Modal */}
+      {selectedDispute && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+        }} onClick={() => setSelectedDispute(null)}>
+          <div style={{
+            background: 'white',
+            padding: '24px',
+            borderRadius: '16px',
+            maxWidth: '600px',
+            width: '90%',
+          }} onClick={e => e.stopPropagation()}>
+            <h2>حل النزاع #{selectedDispute.id?.slice(0, 8)}</h2>
+            <div style={{ marginTop: '16px' }}>
+              <p><strong>السبب:</strong> {selectedDispute.disputeReason}</p>
+              {selectedDispute.Order?.invoiceImageUrl && (
+                <div style={{ marginTop: '16px' }}>
+                  <strong>صورة الفاتورة:</strong>
+                  <img 
+                    src={selectedDispute.Order.invoiceImageUrl} 
+                    alt="Invoice" 
+                    style={{ maxWidth: '100%', marginTop: '8px', borderRadius: '8px' }}
+                  />
+                </div>
+              )}
+              <div style={{ marginTop: '24px' }}>
+                <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>القرار:</label>
+                <select
+                  value={resolution.type}
+                  onChange={e => setResolution({ ...resolution, type: e.target.value })}
+                  style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #ddd' }}
+                >
+                  <option value="no-action">لا إجراء</option>
+                  <option value="refund">استرداد للزبون</option>
+                  <option value="penalty">غرامة للسائق</option>
+                </select>
+              </div>
+              <div style={{ marginTop: '16px' }}>
+                <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>ملاحظات:</label>
+                <textarea
+                  value={resolution.notes}
+                  onChange={e => setResolution({ ...resolution, notes: e.target.value })}
+                  style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #ddd', minHeight: '100px' }}
+                  placeholder="ملاحظات إضافية..."
+                />
+              </div>
+            </div>
+            <div style={{ marginTop: '24px', display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <button 
+                onClick={() => setSelectedDispute(null)}
+                style={{ padding: '8px 24px', background: '#ccc', border: 'none', borderRadius: '8px', cursor: 'pointer' }}
+              >
+                إلغاء
+              </button>
+              <button 
+                onClick={() => handleResolve(selectedDispute.id)}
+                style={{ padding: '8px 24px', background: '#4caf50', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}
+              >
+                تأكيد الحل
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

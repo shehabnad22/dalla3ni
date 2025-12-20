@@ -1,9 +1,25 @@
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
+import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
+import 'dart:convert';
+import 'dart:async';
 import 'splash_screen.dart';
+import 'services/text_service.dart';
+import 'config/app_config.dart';
+import 'config/app_colors.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Load texts.json before app starts
+  await TextService.loadTexts();
+
   SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
@@ -22,15 +38,20 @@ class Dalla3niApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'دلّعني - Dalla3ni',
-      debugShowCheckedModeBanner: false,
+      debugShowCheckedModeBanner: false, // Always false for production
       locale: const Locale('ar'),
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
       supportedLocales: const [
         Locale('ar'),
         Locale('en'),
       ],
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF6C63FF),
+          seedColor: AppColors.primary,
           brightness: Brightness.light,
         ),
         useMaterial3: true,
@@ -47,6 +68,31 @@ class Dalla3niApp extends StatelessWidget {
   }
 }
 
+// Helper class to check login status
+class AuthChecker {
+  static Future<Widget> getInitialRoute() async {
+    final prefs = await SharedPreferences.getInstance();
+    final isLoggedIn = prefs.getBool('is_logged_in') ?? false;
+    final userType = prefs.getString('user_type') ?? '';
+    
+    if (isLoggedIn) {
+      if (userType == 'customer') {
+        return const CustomerHomeScreen();
+      } else if (userType == 'driver') {
+        // Check driver status
+        final driverStatus = prefs.getString('driver_status') ?? 'PENDING_REVIEW';
+        if (driverStatus == 'APPROVED') {
+          // Navigate to driver home - need to import driver_app
+          return const OnboardingScreen(); // Will redirect from splash
+        } else {
+          return const OnboardingScreen(); // Will redirect from splash
+        }
+      }
+    }
+    return const OnboardingScreen();
+  }
+}
+
 // ==================== Onboarding Screen ====================
 class OnboardingScreen extends StatelessWidget {
   const OnboardingScreen({super.key});
@@ -59,7 +105,7 @@ class OnboardingScreen extends StatelessWidget {
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Color(0xFF6C63FF), Color(0xFF4A42D1)],
+            colors: [AppColors.primary, AppColors.secondary],
           ),
         ),
         child: SafeArea(
@@ -76,7 +122,7 @@ class OnboardingScreen extends StatelessWidget {
                 child: const Icon(
                   Icons.delivery_dining,
                   size: 60,
-                  color: Color(0xFF6C63FF),
+                  color: AppColors.primary,
                 ),
               ),
               const SizedBox(height: 24),
@@ -98,9 +144,9 @@ class OnboardingScreen extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 32),
                 child: Column(
                   children: [
-                    const Text(
-                      'اختر نوع حسابك',
-                      style: TextStyle(
+                    Text(
+                      TextService.get('onboarding.selectRole', defaultValue: 'اختر نوع حسابك'),
+                      style: const TextStyle(
                         fontSize: 20,
                         color: Colors.white,
                         fontWeight: FontWeight.w500,
@@ -110,8 +156,8 @@ class OnboardingScreen extends StatelessWidget {
                     // Customer Button
                     _RoleButton(
                       icon: Icons.person,
-                      title: 'زبون',
-                      subtitle: 'اطلب توصيل سريع',
+                      title: TextService.get('onboarding.customer.title', defaultValue: 'زبون'),
+                      subtitle: TextService.get('onboarding.customer.subtitle', defaultValue: 'اطلب توصيل سريع'),
                       isLocked: false,
                       onTap: () => Navigator.push(
                         context,
@@ -122,8 +168,8 @@ class OnboardingScreen extends StatelessWidget {
                     // Driver Button
                     _RoleButton(
                       icon: Icons.motorcycle,
-                      title: 'سائق ميتور',
-                      subtitle: 'انضم كسائق توصيل',
+                      title: TextService.get('onboarding.driver.title', defaultValue: 'سائق ميتور'),
+                      subtitle: TextService.get('onboarding.driver.subtitle', defaultValue: 'انضم كسائق توصيل'),
                       isLocked: false,
                       onTap: () => Navigator.push(
                         context,
@@ -134,8 +180,8 @@ class OnboardingScreen extends StatelessWidget {
                     // StoreOwner Button - LOCKED
                     _RoleButton(
                       icon: Icons.store,
-                      title: 'صاحب متجر',
-                      subtitle: 'سجّل متجرك معنا',
+                      title: TextService.get('onboarding.storeOwner.title', defaultValue: 'صاحب متجر'),
+                      subtitle: TextService.get('onboarding.storeOwner.subtitle', defaultValue: 'سجّل متجرك معنا'),
                       isLocked: true,
                       onTap: () => _showLockedDialog(context),
                     ),
@@ -159,7 +205,7 @@ class OnboardingScreen extends StatelessWidget {
           children: [
             Icon(Icons.lock, color: Colors.orange[700]),
             const SizedBox(width: 8),
-            const Text('قريباً'),
+            Text(TextService.get('onboarding.storeOwner.comingSoon', defaultValue: 'قريباً')),
           ],
         ),
         content: const Text(
@@ -169,7 +215,7 @@ class OnboardingScreen extends StatelessWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('حسناً'),
+            child: Text(TextService.get('common.ok', defaultValue: 'حسناً')),
           ),
         ],
       ),
@@ -208,16 +254,12 @@ class _RoleButton extends StatelessWidget {
                 width: 56,
                 height: 56,
                 decoration: BoxDecoration(
-                  color: isLocked 
-                      ? Colors.grey.withOpacity(0.2) 
+                  color: isLocked
+                      ? Colors.grey.withOpacity(0.2)
                       : const Color(0xFF6C63FF).withOpacity(0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(
-                  icon, 
-                  color: isLocked ? Colors.grey : const Color(0xFF6C63FF), 
-                  size: 28
-                ),
+                child: Icon(icon, color: isLocked ? Colors.grey : AppColors.primary, size: 28),
               ),
               const SizedBox(width: 16),
               Expanded(
@@ -250,17 +292,11 @@ class _RoleButton extends StatelessWidget {
                         ],
                       ],
                     ),
-                    Text(
-                      subtitle, 
-                      style: TextStyle(fontSize: 14, color: Colors.grey[600])
-                    ),
+                    Text(subtitle, style: TextStyle(fontSize: 14, color: Colors.grey[600])),
                   ],
                 ),
               ),
-              Icon(
-                isLocked ? Icons.lock : Icons.arrow_forward_ios, 
-                color: isLocked ? Colors.grey : Colors.grey[400],
-              ),
+              Icon(isLocked ? Icons.lock : Icons.arrow_forward_ios, color: isLocked ? Colors.grey : Colors.grey[400]),
             ],
           ),
         ),
@@ -281,271 +317,192 @@ class _CustomerRegisterScreenState extends State<CustomerRegisterScreen> {
   final _nameController = TextEditingController();
   final _phoneController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
-  int _step = 0; // 0: info, 1: otp
   bool _isLoading = false;
-  String _verificationId = '';
+  
+  @override
+  void initState() {
+    super.initState();
+  }
+  
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _phoneController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('تسجيل زبون جديد'),
-        backgroundColor: const Color(0xFF6C63FF),
+        backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(24),
-        child: _step == 0 ? _buildInfoStep() : _buildOtpStep(),
-      ),
-    );
-  }
-
-  Widget _buildInfoStep() {
-    return Form(
-      key: _formKey,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const Text('أدخل بياناتك', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-          Text('سنرسل لك رمز التحقق عبر واتساب', style: TextStyle(color: Colors.grey[600])),
-          const SizedBox(height: 32),
-          TextFormField(
-            controller: _nameController,
-            validator: (v) => v == null || v.isEmpty ? 'الرجاء إدخال الاسم' : null,
-            decoration: InputDecoration(
-              labelText: 'الاسم الكامل',
-              prefixIcon: const Icon(Icons.person),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-            ),
-          ),
-          const SizedBox(height: 16),
-          TextFormField(
-            controller: _phoneController,
-            keyboardType: TextInputType.phone,
-            validator: (v) {
-              if (v == null || v.isEmpty) return 'الرجاء إدخال رقم الهاتف';
-              if (v.length < 10) return 'رقم الهاتف غير صحيح';
-              return null;
-            },
-            decoration: InputDecoration(
-              labelText: 'رقم الهاتف',
-              hintText: '07XXXXXXXX',
-              prefixIcon: const Icon(Icons.phone),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-            ),
-          ),
-          const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.green[50],
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.green[200]!),
-            ),
-            child: Row(
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Icon(Icons.chat, color: Colors.green[700]),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'سيصلك رمز التحقق عبر واتساب',
-                    style: TextStyle(color: Colors.green[700]),
+                const SizedBox(height: 20),
+                const Text('أدخل بياناتك', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                Text('سجّل حسابك للبدء في استخدام التطبيق', style: TextStyle(color: Colors.grey[600])),
+                const SizedBox(height: 32),
+                TextFormField(
+                  controller: _nameController,
+                  validator: (v) => v == null || v.isEmpty ? 'الرجاء إدخال الاسم' : null,
+                  decoration: InputDecoration(
+                    labelText: 'الاسم الكامل',
+                    prefixIcon: const Icon(Icons.person),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                   ),
                 ),
+                const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _phoneController,
+                    keyboardType: TextInputType.phone,
+                    validator: (v) {
+                      if (v == null || v.isEmpty) return 'الرجاء إدخال رقم الهاتف';
+                      if (v.length < 9) return 'رقم الهاتف غير صحيح';
+                      return null;
+                    },
+                    decoration: InputDecoration(
+                      labelText: 'رقم الهاتف',
+                      hintText: '936XXXXXX',
+                      prefixIcon: const Icon(Icons.phone),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                  ),
+                const SizedBox(height: 40),
+                ElevatedButton(
+                  onPressed: _isLoading ? null : _registerCustomer,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: _isLoading
+                      ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                      : const Text('تسجيل الدخول', style: TextStyle(fontSize: 18)),
+                ),
+                const SizedBox(height: 20),
               ],
             ),
           ),
-          const Spacer(),
-          ElevatedButton(
-            onPressed: _isLoading ? null : _sendOtp,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF6C63FF),
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            ),
-            child: _isLoading 
-                ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                : const Text('إرسال رمز التحقق', style: TextStyle(fontSize: 18)),
-          ),
-        ],
+        ),
       ),
     );
   }
 
-  Future<void> _sendOtp() async {
+  Future<void> _registerCustomer() async {
     if (!_formKey.currentState!.validate()) return;
-    
-    setState(() => _isLoading = true);
-    
-    // TODO: Call WhatsApp API to send OTP
-    // For now, simulate API call
-    await Future.delayed(const Duration(seconds: 2));
-    
-    setState(() {
-      _isLoading = false;
-      _step = 1;
-      _verificationId = '123456'; // Mock verification ID
-    });
-  }
 
-  Widget _buildOtpStep() {
-    return _OtpVerificationWidget(
-      phone: _phoneController.text,
-      onVerified: () => _createCustomerAccount(),
-      onResend: () => _sendOtp(),
-    );
-  }
+    final phone = _phoneController.text.trim();
 
-  Future<void> _createCustomerAccount() async {
-    // TODO: Call API to create customer account
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(builder: (_) => const CustomerHomeScreen()),
-      (route) => false,
-    );
-  }
-}
-
-// ==================== OTP Verification Widget ====================
-class _OtpVerificationWidget extends StatefulWidget {
-  final String phone;
-  final VoidCallback onVerified;
-  final VoidCallback onResend;
-
-  const _OtpVerificationWidget({
-    required this.phone,
-    required this.onVerified,
-    required this.onResend,
-  });
-
-  @override
-  State<_OtpVerificationWidget> createState() => _OtpVerificationWidgetState();
-}
-
-class _OtpVerificationWidgetState extends State<_OtpVerificationWidget> {
-  final List<TextEditingController> _controllers = List.generate(6, (_) => TextEditingController());
-  final List<FocusNode> _focusNodes = List.generate(6, (_) => FocusNode());
-  bool _isLoading = false;
-  int _resendTimer = 60;
-  bool _canResend = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _startResendTimer();
-  }
-
-  void _startResendTimer() {
-    Future.doWhile(() async {
-      await Future.delayed(const Duration(seconds: 1));
-      if (!mounted) return false;
-      setState(() {
-        if (_resendTimer > 0) {
-          _resendTimer--;
-        } else {
-          _canResend = true;
-        }
-      });
-      return _resendTimer > 0;
-    });
-  }
-
-  @override
-  void dispose() {
-    for (var c in _controllers) c.dispose();
-    for (var f in _focusNodes) f.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        const Text('أدخل رمز التحقق', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 8),
-        Text('تم إرسال رمز التحقق إلى ${widget.phone}', style: TextStyle(color: Colors.grey[600])),
-        const SizedBox(height: 32),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          children: List.generate(6, (i) => SizedBox(
-            width: 48,
-            child: TextField(
-              controller: _controllers[i],
-              focusNode: _focusNodes[i],
-              textAlign: TextAlign.center,
-              keyboardType: TextInputType.number,
-              maxLength: 1,
-              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-              decoration: InputDecoration(
-                counterText: '',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-              onChanged: (v) {
-                if (v.isNotEmpty && i < 5) {
-                  _focusNodes[i + 1].requestFocus();
-                }
-                if (_controllers.every((c) => c.text.isNotEmpty)) {
-                  _verifyOtp();
-                }
-              },
-            ),
-          )),
-        ),
-        const SizedBox(height: 24),
-        Center(
-          child: _canResend
-              ? TextButton(
-                  onPressed: () {
-                    widget.onResend();
-                    setState(() {
-                      _resendTimer = 60;
-                      _canResend = false;
-                    });
-                    _startResendTimer();
-                  },
-                  child: const Text('إعادة إرسال الرمز'),
-                )
-              : Text(
-                  'إعادة الإرسال بعد $_resendTimer ثانية',
-                  style: TextStyle(color: Colors.grey[600]),
-                ),
-        ),
-        const Spacer(),
-        ElevatedButton(
-          onPressed: _isLoading ? null : _verifyOtp,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF6C63FF),
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ),
-          child: _isLoading
-              ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-              : const Text('تأكيد', style: TextStyle(fontSize: 18)),
-        ),
-      ],
-    );
-  }
-
-  Future<void> _verifyOtp() async {
-    final otp = _controllers.map((c) => c.text).join();
-    if (otp.length != 6) {
+    if (phone.isEmpty || phone.length < 9) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('الرجاء إدخال الرمز كاملاً')),
+        const SnackBar(content: Text('الرجاء إدخال رقم هاتف صحيح')),
       );
       return;
     }
+    
+    // Add +963 prefix
+    final fullPhone = phone.startsWith('+963') ? phone : '+963$phone';
 
     setState(() => _isLoading = true);
 
-    // TODO: Verify OTP with API
-    await Future.delayed(const Duration(seconds: 1));
+    try {
+      final name = _nameController.text.trim();
+      
+      // Register customer via API
+      try {
+        final response = await http.post(
+          Uri.parse(AppConfig.customerRequestOtp),
+          headers: {'Content-Type': 'application/json'},
+          body: json.encode({
+            'name': name,
+            'phone': fullPhone,
+          }),
+        );
+        
+        if (response.statusCode == 200) {
+          final data = json.decode(response.body);
+          
+          // For MVP, skip OTP and create user directly
+          // In production, verify OTP first
+          final verifyResponse = await http.post(
+            Uri.parse(AppConfig.customerVerifyOtp),
+            headers: {'Content-Type': 'application/json'},
+            body: json.encode({
+              'phone': fullPhone,
+              'otp': data['otp'] ?? '000000', // OTP from API response
+            }),
+          );
+          
+          if (verifyResponse.statusCode == 200) {
+            final verifyData = json.decode(verifyResponse.body);
+            final userId = verifyData['user']?['id'] ?? '';
+            
+            // Save user data
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setString('customer_name', name);
+            await prefs.setString('customer_phone', fullPhone);
+            await prefs.setString('customer_id', userId);
+            await prefs.setBool('is_logged_in', true);
+            await prefs.setString('user_type', 'customer');
+            await prefs.setString('login_time', DateTime.now().toIso8601String());
+          }
+        }
+      } catch (apiError) {
+        // If API fails, still save locally (offline mode)
+        print('API Error: $apiError');
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('customer_name', name);
+        await prefs.setString('customer_phone', fullPhone);
+        await prefs.setBool('is_logged_in', true);
+        await prefs.setString('user_type', 'customer');
+        await prefs.setString('login_time', DateTime.now().toIso8601String());
+      }
+      
+      if (mounted) {
+        // Navigate directly to home (no approval needed for customers)
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (_) => const CustomerHomeScreen()),
+          (route) => false,
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('حدث خطأ: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
 
-    setState(() => _isLoading = false);
-    widget.onVerified();
+  // Check if phone exists via API
+  Future<bool> _checkPhoneExists(String phone) async {
+    try {
+      // TODO: Replace with real API call when backend is ready
+      // final response = await http.get(Uri.parse('http://your-api.com/api/auth/check-phone?phone=${Uri.encodeComponent(phone)}'));
+      // if (response.statusCode == 200) {
+      //   final data = json.decode(response.body);
+      //   return data['exists'] == true;
+      // }
+      return false; // Allow registration for now
+    } catch (e) {
+      return false; // Allow registration on error
+    }
   }
 }
 
@@ -561,13 +518,25 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _phoneController = TextEditingController();
-  final _plateController = TextEditingController();
-  final _bikeModelController = TextEditingController();
+  final _areasController = TextEditingController();
 
   int _currentStep = 0;
+  
+  @override
+  void initState() {
+    super.initState();
+  }
+  
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _phoneController.dispose();
+    _areasController.dispose();
+    super.dispose();
+  }
+  
   String? _idImagePath;
   String? _bikeImagePath;
-  List<String> _selectedAreas = [];
   TimeOfDay _startTime = const TimeOfDay(hour: 8, minute: 0);
   TimeOfDay _endTime = const TimeOfDay(hour: 22, minute: 0);
   bool _acceptTerms = false;
@@ -587,7 +556,7 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('تسجيل سائق جديد'),
-        backgroundColor: const Color(0xFF6C63FF),
+        backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
       ),
       body: Form(
@@ -606,7 +575,7 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
                   ElevatedButton(
                     onPressed: _isLoading ? null : details.onStepContinue,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF6C63FF),
+                      backgroundColor: AppColors.primary,
                       foregroundColor: Colors.white,
                     ),
                     child: _isLoading && _currentStep == 4
@@ -644,10 +613,14 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
                   TextFormField(
                     controller: _phoneController,
                     keyboardType: TextInputType.phone,
-                    validator: (v) => v == null || v.length < 10 ? 'رقم غير صحيح' : null,
+                    validator: (v) {
+                      if (v == null || v.isEmpty) return 'مطلوب';
+                      if (v.length < 9) return 'رقم الهاتف غير صحيح';
+                      return null;
+                    },
                     decoration: InputDecoration(
                       labelText: 'رقم الهاتف *',
-                      hintText: '07XXXXXXXX',
+                      hintText: '936XXXXXX',
                       prefixIcon: const Icon(Icons.phone),
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                     ),
@@ -675,65 +648,32 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
                     imagePath: _bikeImagePath,
                     onTap: () => _pickImage('bike'),
                   ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _plateController,
-                    validator: (v) => v == null || v.isEmpty ? 'مطلوب' : null,
-                    decoration: InputDecoration(
-                      labelText: 'رقم لوحة الدراجة *',
-                      prefixIcon: const Icon(Icons.confirmation_number),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _bikeModelController,
-                    decoration: InputDecoration(
-                      labelText: 'موديل الدراجة',
-                      hintText: 'مثال: Honda CG 125',
-                      prefixIcon: const Icon(Icons.two_wheeler),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                  ),
                 ],
               ),
             ),
             // Step 3: Areas
             Step(
-              title: const Text('مناطق العمل'),
+              title: const Text('مناطق التواجد الدائم'),
               isActive: _currentStep >= 2,
               state: _currentStep > 2 ? StepState.complete : StepState.indexed,
               content: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('اختر المناطق التي تعمل بها *', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const Text('مناطق التواجد الدائم *', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  Text('اكتب المناطق التي تتواجد فيها بشكل دائم (مثال: جبل عمان، وسط البلد، الشميساني)', style: TextStyle(color: Colors.grey[600], fontSize: 12)),
                   const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: _availableAreas.map((area) {
-                      final isSelected = _selectedAreas.contains(area);
-                      return FilterChip(
-                        label: Text(area),
-                        selected: isSelected,
-                        onSelected: (selected) {
-                          setState(() {
-                            if (selected) _selectedAreas.add(area);
-                            else _selectedAreas.remove(area);
-                          });
-                        },
-                        selectedColor: const Color(0xFF6C63FF).withOpacity(0.2),
-                        checkmarkColor: const Color(0xFF6C63FF),
-                      );
-                    }).toList(),
-                  ),
-                  if (_selectedAreas.isNotEmpty) ...[
-                    const SizedBox(height: 16),
-                    Text(
-                      'المناطق المختارة: ${_selectedAreas.length}',
-                      style: TextStyle(color: Colors.grey[600]),
+                  TextFormField(
+                    controller: _areasController,
+                    validator: (v) => v == null || v.isEmpty ? 'مطلوب' : null,
+                    maxLines: 3,
+                    decoration: InputDecoration(
+                      labelText: 'اكتب المناطق',
+                      hintText: 'مثال: جبل عمان، وسط البلد، الشميساني',
+                      prefixIcon: const Icon(Icons.location_on),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                     ),
-                  ],
+                  ),
                 ],
               ),
             ),
@@ -745,7 +685,7 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
               content: Column(
                 children: [
                   ListTile(
-                    leading: const Icon(Icons.access_time, color: Color(0xFF6C63FF)),
+                    leading: const Icon(Icons.access_time, color: AppColors.primary),
                     title: const Text('من الساعة'),
                     trailing: Text(_startTime.format(context), style: const TextStyle(fontWeight: FontWeight.bold)),
                     onTap: () async {
@@ -755,7 +695,7 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
                   ),
                   const Divider(),
                   ListTile(
-                    leading: const Icon(Icons.access_time_filled, color: Color(0xFF6C63FF)),
+                    leading: const Icon(Icons.access_time_filled, color: AppColors.primary),
                     title: const Text('إلى الساعة'),
                     trailing: Text(_endTime.format(context), style: const TextStyle(fontWeight: FontWeight.bold)),
                     onTap: () async {
@@ -770,48 +710,83 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
             Step(
               title: const Text('الشروط والأحكام'),
               isActive: _currentStep >= 4,
-              content: Column(
-                children: [
-                  _TermsCheckbox(
-                    value: _acceptTerms,
-                    title: 'أوافق على الشروط والأحكام',
-                    subtitle: 'قراءة الشروط والأحكام',
-                    onChanged: (v) => setState(() => _acceptTerms = v ?? false),
-                  ),
-                  _TermsCheckbox(
-                    value: _acceptSettlement,
-                    title: 'ألتزم بالتسوية اليومية',
-                    subtitle: 'يجب تسوية المستحقات يومياً لتجنب إيقاف الحساب',
-                    onChanged: (v) => setState(() => _acceptSettlement = v ?? false),
-                  ),
-                  _TermsCheckbox(
-                    value: _acceptIdStorage,
-                    title: 'أسمح بتخزين صورة الهوية',
-                    subtitle: 'للتحقق من الهوية وضمان الأمان',
-                    onChanged: (v) => setState(() => _acceptIdStorage = v ?? false),
-                  ),
-                  const SizedBox(height: 16),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.orange[50],
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.orange[200]!),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.info_outline, color: Colors.orange[700]),
-                        const SizedBox(width: 12),
-                        const Expanded(
-                          child: Text(
-                            'سيتم مراجعة طلبك من قبل الإدارة والرد خلال 24-48 ساعة',
-                            style: TextStyle(fontSize: 13),
-                          ),
+              content: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.grey[100],
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.grey[300]!),
+                      ),
+                      constraints: const BoxConstraints(maxHeight: 200),
+                      child: const SingleChildScrollView(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'الشروط والأحكام',
+                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                            ),
+                            SizedBox(height: 12),
+                            Text(
+                              '1. يجب أن تكون جميع المعلومات المقدمة صحيحة ودقيقة.\n'
+                              '2. يجب الحفاظ على الوثائق المرفوعة محدثة وصالحة.\n'
+                              '3. يجب الالتزام بجميع قوانين المرور والسلامة.\n'
+                              '4. يجب تسوية المستحقات المالية يومياً.\n'
+                              '5. يحق للإدارة رفض أو إيقاف الحساب في حالة مخالفة الشروط.\n'
+                              '6. جميع البيانات الشخصية محمية وفقاً لسياسة الخصوصية.\n'
+                              '7. يجب الالتزام بمعايير الخدمة وجودة التوصيل.',
+                              style: TextStyle(fontSize: 14, height: 1.5),
+                            ),
+                          ],
                         ),
-                      ],
+                      ),
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 16),
+                    _TermsCheckbox(
+                      value: _acceptTerms,
+                      title: 'أوافق على الشروط والأحكام *',
+                      subtitle: 'قرأت وفهمت جميع الشروط والأحكام أعلاه',
+                      onChanged: (v) => setState(() => _acceptTerms = v ?? false),
+                    ),
+                    _TermsCheckbox(
+                      value: _acceptSettlement,
+                      title: 'ألتزم بالتسوية اليومية *',
+                      subtitle: 'يجب تسوية المستحقات يومياً لتجنب إيقاف الحساب',
+                      onChanged: (v) => setState(() => _acceptSettlement = v ?? false),
+                    ),
+                    _TermsCheckbox(
+                      value: _acceptIdStorage,
+                      title: 'أسمح بتخزين صورة الهوية *',
+                      subtitle: 'للتحقق من الهوية وضمان الأمان',
+                      onChanged: (v) => setState(() => _acceptIdStorage = v ?? false),
+                    ),
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.orange[50],
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.orange[200]!),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.info_outline, color: Colors.orange[700]),
+                          const SizedBox(width: 12),
+                          const Expanded(
+                            child: Text(
+                              'سيتم مراجعة طلبك من قبل الإدارة والرد خلال 24-48 ساعة. لن تتمكن من العمل حتى يتم قبول طلبك.',
+                              style: TextStyle(fontSize: 13),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ],
@@ -823,30 +798,37 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
   void _onStepContinue() {
     // Validation for each step
     if (_currentStep == 0) {
-      if (_nameController.text.isEmpty || _phoneController.text.length < 10) {
+      if (_nameController.text.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('الرجاء إكمال البيانات الشخصية')),
+          const SnackBar(content: Text('الرجاء إدخال الاسم')),
+        );
+        return;
+      }
+      final phone = _phoneController.text.trim();
+      if (!phone.startsWith('+963') || phone.length < 13) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('الرجاء إدخال رقم هاتف صحيح')),
         );
         return;
       }
     } else if (_currentStep == 1) {
-      if (_idImagePath == null || _bikeImagePath == null || _plateController.text.isEmpty) {
+      if (_idImagePath == null || _bikeImagePath == null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('الرجاء رفع الصور وإدخال رقم اللوحة')),
+          const SnackBar(content: Text('الرجاء رفع الصور المطلوبة')),
         );
         return;
       }
     } else if (_currentStep == 2) {
-      if (_selectedAreas.isEmpty) {
+      if (_areasController.text.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('الرجاء اختيار منطقة واحدة على الأقل')),
+          const SnackBar(content: Text('الرجاء إدخال مناطق التواجد الدائم')),
         );
         return;
       }
     } else if (_currentStep == 4) {
       if (!_acceptTerms || !_acceptSettlement || !_acceptIdStorage) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('الرجاء الموافقة على جميع الشروط')),
+          const SnackBar(content: Text('الرجاء الموافقة على جميع الشروط الإلزامية')),
         );
         return;
       }
@@ -857,65 +839,142 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
     setState(() => _currentStep++);
   }
 
-  void _pickImage(String type) {
-    // TODO: Implement actual image picker
-    setState(() {
-      if (type == 'id') _idImagePath = 'selected';
-      else _bikeImagePath = 'selected';
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('تم اختيار ${type == 'id' ? 'صورة الهوية' : 'صورة الدراجة'}')),
-    );
+  Future<void> _pickImage(String type) async {
+    try {
+      final ImagePicker picker = ImagePicker();
+      // Open camera directly (no gallery option)
+      final XFile? image = await picker.pickImage(
+        source: ImageSource.camera,
+        imageQuality: 80,
+      );
+      
+      if (image != null) {
+        setState(() {
+          if (type == 'id') {
+            _idImagePath = image.path;
+          } else {
+            _bikeImagePath = image.path;
+          }
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('تم التقاط ${type == 'id' ? 'صورة الهوية' : 'صورة الدراجة'}'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('حدث خطأ: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   Future<void> _submitRegistration() async {
+    final phone = _phoneController.text.trim();
+    final name = _nameController.text.trim();
+    
+    if (phone.isEmpty || phone.length < 9) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('الرجاء إدخال رقم هاتف صحيح')),
+      );
+      return;
+    }
+    
+    // Add +963 prefix
+    final fullPhone = phone.startsWith('+963') ? phone : '+963$phone';
+
     setState(() => _isLoading = true);
 
-    // TODO: Call API to submit driver registration
-    await Future.delayed(const Duration(seconds: 2));
+    try {
+      // Submit driver registration to API
+      try {
+        // Parse areas from text field
+        final areasList = _areasController.text
+            .split(',')
+            .map((e) => e.trim())
+            .where((e) => e.isNotEmpty)
+            .toList();
+        
+        final response = await http.post(
+          Uri.parse(AppConfig.driverRegister),
+          headers: {'Content-Type': 'application/json'},
+          body: json.encode({
+            'fullName': name,
+            'phone': fullPhone,
+            'idPhoto': _idImagePath ?? 'placeholder',
+            'bikePhoto': _bikeImagePath ?? 'placeholder',
+            'plateNumber': 'N/A', // Not required anymore
+            'bikeModel': null,
+            'areaTags': areasList,
+            'availabilityStart': '${_startTime.hour.toString().padLeft(2, '0')}:${_startTime.minute.toString().padLeft(2, '0')}',
+            'availabilityEnd': '${_endTime.hour.toString().padLeft(2, '0')}:${_endTime.minute.toString().padLeft(2, '0')}',
+          }),
+        );
+        
+        if (response.statusCode == 201) {
+          final data = json.decode(response.body);
+          if (data['success']) {
+            // Save driver data
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setString('driver_name', name);
+            await prefs.setString('driver_phone', fullPhone);
+            await prefs.setString('driver_id', data['driverId'] ?? '');
+            await prefs.setBool('is_logged_in', true);
+            await prefs.setString('user_type', 'driver');
+            await prefs.setString('login_time', DateTime.now().toIso8601String());
+          }
+        }
+      } catch (apiError) {
+        // If API fails, still save locally
+        print('API Error: $apiError');
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('driver_name', name);
+        await prefs.setString('driver_phone', fullPhone);
+        await prefs.setBool('is_logged_in', true);
+        await prefs.setString('user_type', 'driver');
+        await prefs.setString('login_time', DateTime.now().toIso8601String());
+      }
 
-    setState(() => _isLoading = false);
+      if (!mounted) return;
 
-    if (!mounted) return;
+      setState(() => _isLoading = false);
 
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Row(
-          children: [
-            Icon(Icons.check_circle, color: Colors.green, size: 32),
-            SizedBox(width: 8),
-            Text('تم إرسال الطلب'),
-          ],
-        ),
-        content: const Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('شكراً لتسجيلك معنا! 🎉'),
-            SizedBox(height: 12),
-            Text('حالة الطلب: قيد المراجعة'),
-            SizedBox(height: 8),
-            Text(
-              'سيتم مراجعة طلبك والتواصل معك خلال 24-48 ساعة.',
-              style: TextStyle(color: Colors.grey),
-            ),
-          ],
-        ),
-        actions: [
-          ElevatedButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              Navigator.of(context).pop();
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6C63FF)),
-            child: const Text('حسناً'),
+      // Navigate to pending review screen
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const DriverAccountPendingScreen()),
+        (route) => false,
+      );
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('حدث خطأ: ${e.toString()}'),
+            backgroundColor: Colors.red,
           ),
-        ],
-      ),
-    );
+        );
+      }
+    }
+  }
+
+  // Check if phone exists via API
+  Future<bool> _checkPhoneExists(String phone) async {
+    try {
+      // TODO: Replace with real API call when backend is ready
+      // final response = await http.get(Uri.parse('http://your-api.com/api/auth/check-phone?phone=${Uri.encodeComponent(phone)}'));
+      // if (response.statusCode == 200) {
+      //   final data = json.decode(response.body);
+      //   return data['exists'] == true;
+      // }
+      return false; // Allow registration for now
+    } catch (e) {
+      return false; // Allow registration on error
+    }
   }
 }
 
@@ -941,17 +1000,17 @@ class _DocumentUploadCard extends StatelessWidget {
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
           border: Border.all(
-            color: imagePath != null ? const Color(0xFF6C63FF) : Colors.grey[300]!,
+            color: imagePath != null ? AppColors.primary : Colors.grey[300]!,
             width: 2,
           ),
           borderRadius: BorderRadius.circular(12),
-          color: imagePath != null ? const Color(0xFF6C63FF).withOpacity(0.05) : null,
+          color: imagePath != null ? AppColors.primary.withOpacity(0.05) : null,
         ),
         child: Row(
           children: [
             Icon(
               imagePath != null ? Icons.check_circle : icon,
-              color: imagePath != null ? const Color(0xFF6C63FF) : Colors.grey,
+              color: imagePath != null ? AppColors.primary : Colors.grey,
               size: 32,
             ),
             const SizedBox(width: 16),
@@ -960,14 +1019,14 @@ class _DocumentUploadCard extends StatelessWidget {
                 imagePath != null ? '$title ✓' : title,
                 style: TextStyle(
                   fontSize: 16,
-                  color: imagePath != null ? const Color(0xFF6C63FF) : Colors.grey[700],
+                  color: imagePath != null ? AppColors.primary : Colors.grey[700],
                   fontWeight: imagePath != null ? FontWeight.bold : FontWeight.normal,
                 ),
               ),
             ),
             Icon(
               Icons.camera_alt,
-              color: imagePath != null ? const Color(0xFF6C63FF) : Colors.grey,
+              color: imagePath != null ? AppColors.primary : Colors.grey,
             ),
           ],
         ),
@@ -994,7 +1053,7 @@ class _TermsCheckbox extends StatelessWidget {
     return CheckboxListTile(
       value: value,
       onChanged: onChanged,
-      activeColor: const Color(0xFF6C63FF),
+      activeColor: AppColors.primary,
       title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
       subtitle: Text(subtitle, style: TextStyle(fontSize: 12, color: Colors.grey[600])),
       controlAffinity: ListTileControlAffinity.leading,
@@ -1003,16 +1062,17 @@ class _TermsCheckbox extends StatelessWidget {
   }
 }
 
-// ==================== Customer Home Screen ====================
-class CustomerHomeScreen extends StatelessWidget {
-  const CustomerHomeScreen({super.key});
+// ==================== Driver Account Pending Screen ====================
+class DriverAccountPendingScreen extends StatelessWidget {
+  const DriverAccountPendingScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('دلّعني'),
-        backgroundColor: const Color(0xFF6C63FF),
+        automaticallyImplyLeading: false,
+        title: const Text('طلبك قيد المراجعة'),
+        backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
       ),
       body: Padding(
@@ -1020,50 +1080,515 @@ class CustomerHomeScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text('مرحباً بك 👋', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
+            const Spacer(),
+            const Icon(Icons.hourglass_bottom, size: 80, color: AppColors.primary),
+            const SizedBox(height: 24),
+            const Text(
+              'تم استلام طلبك',
+              style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+              textAlign: TextAlign.center,
+            ),
             const SizedBox(height: 8),
-            Text('ماذا تريد أن نوصّل لك اليوم؟', style: TextStyle(fontSize: 16, color: Colors.grey[600])),
+            Text(
+              'سيتم مراجعة طلبك خلال 24-48 ساعة',
+              style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+              textAlign: TextAlign.center,
+            ),
             const SizedBox(height: 32),
-            Expanded(
-              child: InkWell(
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WriteOrderScreen())),
-                borderRadius: BorderRadius.circular(20),
-                child: Container(
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      begin: Alignment.topRight,
-                      end: Alignment.bottomLeft,
-                      colors: [Color(0xFF6C63FF), Color(0xFF4A42D1)],
-                    ),
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(color: const Color(0xFF6C63FF).withOpacity(0.3), blurRadius: 20, offset: const Offset(0, 10)),
-                    ],
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.indigo[50],
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.indigo[200]!),
+              ),
+              child: const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'ماذا يحدث الآن؟',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                   ),
-                  child: const Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.edit_note, size: 80, color: Colors.white),
-                      SizedBox(height: 16),
-                      Text('اكتب طلبك', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white)),
-                      SizedBox(height: 8),
-                      Text('اكتب ما تريد ونوصّله لك', style: TextStyle(fontSize: 16, color: Colors.white70)),
-                    ],
-                  ),
-                ),
+                  SizedBox(height: 12),
+                  Text('• فريقنا يتحقق من صحة البيانات المرسلة'),
+                  SizedBox(height: 4),
+                  Text('• سيتم التحقق من الوثائق المرفوعة'),
+                  SizedBox(height: 4),
+                  Text('• سيتم التواصل معك إذا احتجنا معلومات إضافية'),
+                  SizedBox(height: 4),
+                  Text('• عند الموافقة ستصلك رسالة تأكيد ويمكنك البدء بالعمل'),
+                ],
               ),
             ),
             const SizedBox(height: 24),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.orange[50],
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.orange[200]!),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline, color: Colors.orange[700]),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'لن تتمكن من العمل حتى يتم قبول طلبك من قبل الإدارة',
+                      style: TextStyle(color: Colors.orange[800], fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Spacer(),
+            ElevatedButton(
+              onPressed: () {
+                // Navigate back to onboarding or login
+                Navigator.pushAndRemoveUntil(
+                  context,
+                  MaterialPageRoute(builder: (_) => const OnboardingScreen()),
+                  (route) => false,
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              child: const Text('العودة للرئيسية', style: TextStyle(fontSize: 18)),
+            ),
           ],
         ),
       ),
+    );
+  }
+}
+
+// ==================== Customer Home Screen ====================
+class CustomerHomeScreen extends StatefulWidget {
+  const CustomerHomeScreen({super.key});
+
+  @override
+  State<CustomerHomeScreen> createState() => _CustomerHomeScreenState();
+}
+
+class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
+  int _currentIndex = 0;
+  String _customerName = 'مستخدم جديد';
+  String _customerPhone = '+963';
+  String? _customerId;
+  List<Map<String, dynamic>> _orders = [];
+  bool _isLoadingOrders = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserData();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Fetch orders when orders tab is selected
+    if (_currentIndex == 1) {
+      _fetchOrders();
+    }
+  }
+
+  Future<void> _loadUserData() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _customerName = prefs.getString('customer_name') ?? 'مستخدم جديد';
+      _customerPhone = prefs.getString('customer_phone') ?? '+963';
+      _customerId = prefs.getString('customer_id');
+    });
+    // Fetch orders after loading user data
+    if (_customerId != null && _customerId!.isNotEmpty) {
+      _fetchOrders();
+    }
+  }
+
+  Future<void> _fetchOrders() async {
+    if (_isLoadingOrders) return;
+    
+    setState(() => _isLoadingOrders = true);
+    
+    try {
+      final customerId = _customerId;
+      if (customerId == null || customerId.isEmpty) {
+        setState(() {
+          _orders = [];
+          _isLoadingOrders = false;
+        });
+        return;
+      }
+
+      final url = Uri.parse('${AppConfig.orders}?customerId=$customerId');
+      final response = await http.get(url);
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['success'] == true && data['orders'] != null) {
+          setState(() {
+            _orders = List<Map<String, dynamic>>.from(data['orders']);
+            _isLoadingOrders = false;
+          });
+        } else {
+          setState(() {
+            _orders = [];
+            _isLoadingOrders = false;
+          });
+        }
+      } else {
+        setState(() {
+          _orders = [];
+          _isLoadingOrders = false;
+        });
+      }
+    } catch (e) {
+      print('Error fetching orders: $e');
+      setState(() {
+        _orders = [];
+        _isLoadingOrders = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('دلّعني'),
+        backgroundColor: AppColors.primary,
+        foregroundColor: Colors.white,
+      ),
+      body: IndexedStack(
+        index: _currentIndex,
+        children: [
+          _buildHomeTab(),
+          _buildOrdersTab(),
+          _buildProfileTab(),
+        ],
+      ),
       bottomNavigationBar: BottomNavigationBar(
-        currentIndex: 0,
-        selectedItemColor: const Color(0xFF6C63FF),
+        currentIndex: _currentIndex,
+        onTap: (index) {
+          setState(() {
+            _currentIndex = index;
+          });
+          // Fetch orders when orders tab is selected
+          if (index == 1) {
+            _fetchOrders();
+          }
+        },
+        selectedItemColor: AppColors.primary,
+        unselectedItemColor: Colors.grey,
+        type: BottomNavigationBarType.fixed,
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home), label: 'الرئيسية'),
           BottomNavigationBarItem(icon: Icon(Icons.receipt_long), label: 'طلباتي'),
           BottomNavigationBarItem(icon: Icon(Icons.person), label: 'حسابي'),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHomeTab() {
+    return Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text('مرحباً بك 👋', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          Text('ماذا تريد أن نوصّل لك اليوم؟', style: TextStyle(fontSize: 16, color: Colors.grey[600])),
+          const SizedBox(height: 32),
+          Expanded(
+            child: InkWell(
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WriteOrderScreen())),
+              borderRadius: BorderRadius.circular(20),
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    begin: Alignment.topRight,
+                    end: Alignment.bottomLeft,
+                    colors: [AppColors.primary, AppColors.secondary],
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(color: AppColors.primary.withOpacity(0.3), blurRadius: 20, offset: const Offset(0, 10)),
+                  ],
+                ),
+                child: const Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.edit_note, size: 80, color: Colors.white),
+                    SizedBox(height: 16),
+                    Text('اكتب طلبك', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white)),
+                    SizedBox(height: 8),
+                    Text('اكتب ما تريد ونوصّله لك', style: TextStyle(fontSize: 16, color: Colors.white70)),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOrdersTab() {
+    if (_isLoadingOrders) {
+      return const Center(
+        child: CircularProgressIndicator(),
+      );
+    }
+
+    if (_orders.isEmpty) {
+      return SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('طلباتي', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
+                IconButton(
+                  icon: const Icon(Icons.refresh),
+                  onPressed: _fetchOrders,
+                  tooltip: 'تحديث',
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            Container(
+              padding: const EdgeInsets.all(32),
+              decoration: BoxDecoration(
+                color: Colors.grey[100],
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Column(
+                children: [
+                  Icon(Icons.receipt_long, size: 64, color: Colors.grey[400]),
+                  const SizedBox(height: 16),
+                  Text('لا توجد طلبات بعد', style: TextStyle(fontSize: 18, color: Colors.grey[600])),
+                  const SizedBox(height: 8),
+                  Text('ابدأ بإنشاء طلبك الأول', style: TextStyle(fontSize: 14, color: Colors.grey[500])),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: _fetchOrders,
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        physics: const AlwaysScrollableScrollPhysics(),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('طلباتي', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
+                IconButton(
+                  icon: const Icon(Icons.refresh),
+                  onPressed: _fetchOrders,
+                  tooltip: 'تحديث',
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            ..._orders.map((order) => _buildOrderCard(order)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOrderCard(Map<String, dynamic> order) {
+    final status = order['status'] ?? 'REQUESTED';
+    final statusText = _getStatusText(status);
+    final statusColor = _getStatusColor(status);
+    final createdAt = order['createdAt'] != null 
+        ? DateTime.tryParse(order['createdAt'].toString())
+        : null;
+    
+    return Card(
+      margin: const EdgeInsets.only(bottom: 16),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: InkWell(
+        onTap: () {
+          // Navigate to order details or tracking screen
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => OrderTrackingScreen(
+                orderData: {
+                  'orderId': order['id']?.toString() ?? '',
+                  'order': order['itemsText']?.toString() ?? '',
+                  'address': order['deliveryAddress']?.toString() ?? '',
+                  'notes': order['notes']?.toString() ?? '',
+                  'customerName': _customerName,
+                  'customerPhone': _customerPhone,
+                  'latitude': order['deliveryLat']?.toString() ?? '',
+                  'longitude': order['deliveryLng']?.toString() ?? '',
+                },
+              ),
+            ),
+          );
+        },
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: statusColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      statusText,
+                      style: TextStyle(
+                        color: statusColor,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                  const Spacer(),
+                  if (createdAt != null)
+                    Text(
+                      '${createdAt.day}/${createdAt.month}/${createdAt.year}',
+                      style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text(
+                order['itemsText']?.toString() ?? 'لا توجد تفاصيل',
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Icon(Icons.location_on, size: 16, color: Colors.grey[600]),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      order['deliveryAddress']?.toString() ?? 'لا يوجد عنوان',
+                      style: TextStyle(color: Colors.grey[600], fontSize: 13),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+              if (order['estimatedPrice'] != null) ...[
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'السعر التقديري:',
+                      style: TextStyle(color: Colors.grey[600], fontSize: 13),
+                    ),
+                    Text(
+                      '${order['estimatedPrice']} دينار',
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _getStatusText(String status) {
+    switch (status.toUpperCase()) {
+      case 'REQUESTED':
+        return 'قيد الانتظار';
+      case 'ASSIGNED':
+        return 'تم التعيين';
+      case 'PICKED_UP':
+        return 'تم الاستلام';
+      case 'EN_ROUTE':
+        return 'في الطريق';
+      case 'DELIVERED':
+        return 'تم التسليم';
+      case 'COMPLETED':
+        return 'مكتمل';
+      case 'CANCELED':
+        return 'ملغي';
+      default:
+        return status;
+    }
+  }
+
+  Color _getStatusColor(String status) {
+    switch (status.toUpperCase()) {
+      case 'REQUESTED':
+        return Colors.orange;
+      case 'ASSIGNED':
+        return Colors.blue;
+      case 'PICKED_UP':
+        return Colors.purple;
+      case 'EN_ROUTE':
+        return Colors.indigo;
+      case 'DELIVERED':
+        return Colors.green;
+      case 'COMPLETED':
+        return Colors.green;
+      case 'CANCELED':
+        return Colors.red;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  Widget _buildProfileTab() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text('حسابي', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 24),
+          Card(
+            child: ListTile(
+              leading: CircleAvatar(
+                backgroundColor: AppColors.primary.withOpacity(0.1),
+                child: const Icon(Icons.person, color: AppColors.primary),
+              ),
+              title: const Text('الاسم', style: TextStyle(fontWeight: FontWeight.bold)),
+              subtitle: Text(_customerName),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.phone, color: AppColors.primary),
+              title: const Text('رقم الهاتف', style: TextStyle(fontWeight: FontWeight.bold)),
+              subtitle: Text(_customerPhone),
+            ),
+          ),
         ],
       ),
     );
@@ -1081,15 +1606,178 @@ class WriteOrderScreen extends StatefulWidget {
 class _WriteOrderScreenState extends State<WriteOrderScreen> {
   final _orderController = TextEditingController();
   final _addressController = TextEditingController();
-  final _priceController = TextEditingController();
   final _notesController = TextEditingController();
+  bool _isGettingLocation = false;
+  double? _latitude;
+  double? _longitude;
+
+  @override
+  void dispose() {
+    _orderController.dispose();
+    _addressController.dispose();
+    _notesController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _getCurrentLocation() async {
+    setState(() => _isGettingLocation = true);
+    
+    try {
+      // Check if location services are enabled
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('يرجى تفعيل خدمة الموقع في إعدادات الهاتف'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+          // Open location settings
+          await Geolocator.openLocationSettings();
+        }
+        setState(() => _isGettingLocation = false);
+        return;
+      }
+
+      // Check location permission
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('تم رفض إذن الوصول للموقع'),
+                backgroundColor: Colors.red,
+              ),
+            );
+            _showLocationDialog(); // Show manual entry dialog
+          }
+          setState(() => _isGettingLocation = false);
+          return;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('يرجى تفعيل إذن الموقع من إعدادات التطبيق'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          _showLocationDialog(); // Show manual entry dialog
+        }
+        setState(() => _isGettingLocation = false);
+        return;
+      }
+
+      // Get current position
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+      // Get address from coordinates
+      List<Placemark> placemarks = await placemarkFromCoordinates(
+        position.latitude,
+        position.longitude,
+      );
+
+      if (placemarks.isNotEmpty) {
+        Placemark place = placemarks[0];
+        String address = '${place.street ?? ''} ${place.subLocality ?? ''} ${place.locality ?? ''} ${place.country ?? ''}'.trim();
+        
+        if (mounted) {
+          setState(() {
+            _latitude = position.latitude;
+            _longitude = position.longitude;
+            _addressController.text = address.isNotEmpty ? address : '${position.latitude}, ${position.longitude}';
+          });
+          
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('تم تحديد موقعك بنجاح ✓'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      } else {
+        // If no address found, use coordinates
+        if (mounted) {
+          setState(() {
+            _latitude = position.latitude;
+            _longitude = position.longitude;
+            _addressController.text = '${position.latitude}, ${position.longitude}';
+          });
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('حدث خطأ: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        // Show manual entry dialog as fallback
+        _showLocationDialog();
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isGettingLocation = false);
+      }
+    }
+  }
+
+  void _showLocationDialog() {
+    final locationController = TextEditingController();
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('أدخل عنوانك يدوياً'),
+        content: TextField(
+          controller: locationController,
+          decoration: const InputDecoration(
+            hintText: 'مثال: جبل عمان، شارع الملكة رانيا',
+            border: OutlineInputBorder(),
+          ),
+          maxLines: 3,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('إلغاء'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (locationController.text.isNotEmpty) {
+                setState(() {
+                  _addressController.text = locationController.text;
+                  _latitude = null; // Clear GPS coordinates when manual entry
+                  _longitude = null;
+                });
+                Navigator.pop(context);
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+            ),
+            child: const Text('حفظ'),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('اكتب طلبك'),
-        backgroundColor: const Color(0xFF6C63FF),
+        backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
       ),
       body: SingleChildScrollView(
@@ -1111,32 +1799,74 @@ class _WriteOrderScreenState extends State<WriteOrderScreen> {
             ),
             const SizedBox(height: 24),
             const Text('عنوان التوصيل', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _addressController,
-              decoration: InputDecoration(
-                hintText: 'أدخل عنوان التوصيل بالتفصيل',
-                prefixIcon: const Icon(Icons.location_on),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                suffixIcon: IconButton(
-                  icon: const Icon(Icons.my_location, color: Color(0xFF6C63FF)),
-                  onPressed: () {},
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _addressController,
+                    decoration: InputDecoration(
+                      hintText: 'أدخل عنوان التوصيل أو اضغط على GPS',
+                      prefixIcon: const Icon(Icons.location_on),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    onTap: () {
+                      // Show option to enter manually
+                      _showLocationDialog();
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  decoration: BoxDecoration(
+                    color: _latitude != null && _longitude != null 
+                        ? Colors.green.withOpacity(0.1) 
+                        : Colors.grey.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: _latitude != null && _longitude != null 
+                          ? Colors.green 
+                          : AppColors.primary,
+                    ),
+                  ),
+                  child: _isGettingLocation
+                      ? const Padding(
+                          padding: EdgeInsets.all(12.0),
+                          child: SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        )
+                      : IconButton(
+                          icon: Icon(
+                            _latitude != null && _longitude != null 
+                                ? Icons.check_circle 
+                                : Icons.my_location,
+                            color: _latitude != null && _longitude != null 
+                                ? Colors.green 
+                                : AppColors.primary,
+                          ),
+                          onPressed: _getCurrentLocation,
+                          tooltip: 'تحديد الموقع الحالي عبر GPS',
+                        ),
+                ),
+              ],
+            ),
+            if (_latitude != null && _longitude != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Row(
+                  children: [
+                    Icon(Icons.check_circle, size: 16, color: Colors.green[700]),
+                    const SizedBox(width: 4),
+                    Text(
+                      'تم تحديد الموقع بدقة GPS',
+                      style: TextStyle(fontSize: 12, color: Colors.green[700]),
+                    ),
+                  ],
                 ),
               ),
-            ),
-            const SizedBox(height: 24),
-            const Text('السعر التقديري (اختياري)', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _priceController,
-              keyboardType: TextInputType.number,
-              decoration: InputDecoration(
-                hintText: '0.00',
-                prefixIcon: const Icon(Icons.attach_money),
-                suffixText: 'دينار',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-            ),
             const SizedBox(height: 24),
             const Text('ملاحظات إضافية', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
             const SizedBox(height: 16),
@@ -1152,7 +1882,7 @@ class _WriteOrderScreenState extends State<WriteOrderScreen> {
             ElevatedButton(
               onPressed: _submitOrder,
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF6C63FF),
+                backgroundColor: AppColors.primary,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -1166,22 +1896,127 @@ class _WriteOrderScreenState extends State<WriteOrderScreen> {
   }
 
   void _submitOrder() {
-    if (_orderController.text.isEmpty || _addressController.text.isEmpty) {
+    if (_orderController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('يرجى كتابة الطلب والعنوان')),
+        const SnackBar(content: Text('يرجى كتابة تفاصيل الطلب')),
       );
       return;
     }
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (_) => const MatchingDriverScreen()),
-    );
+    
+    if (_addressController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('يرجى إدخال عنوان التوصيل')),
+      );
+      return;
+    }
+
+    // Get user data and send order
+    SharedPreferences.getInstance().then((prefs) async {
+      final customerName = prefs.getString('customer_name') ?? 'مستخدم';
+      final customerPhone = prefs.getString('customer_phone') ?? '+963';
+      final customerId = prefs.getString('customer_id') ?? '';
+      
+      setState(() => _isGettingLocation = true);
+      
+      try {
+        // Get or create customer ID
+        String finalCustomerId = customerId;
+        if (finalCustomerId.isEmpty) {
+          // Try to get customer ID from phone
+          final prefs = await SharedPreferences.getInstance();
+          final savedPhone = prefs.getString('customer_phone') ?? '';
+          if (savedPhone.isNotEmpty) {
+            // Try to find customer by phone
+            // For now, we'll create order without customerId if not found
+          }
+        }
+        
+        // Send order to API
+        final response = await http.post(
+          Uri.parse(AppConfig.orders),
+          headers: {
+            'Content-Type': 'application/json',
+            // Add auth token if available
+            // 'Authorization': 'Bearer $token',
+          },
+          body: json.encode({
+            'customerId': finalCustomerId.isNotEmpty ? finalCustomerId : null,
+            'itemsText': _orderController.text,
+            'deliveryAddress': _addressController.text,
+            'deliveryLat': _latitude?.toString(),
+            'deliveryLng': _longitude?.toString(),
+            'pickupAddress': _addressController.text,
+            'notes': _notesController.text,
+            'area': 'default',
+          }),
+        );
+        
+        String orderId = '';
+        if (response.statusCode == 201) {
+          final data = json.decode(response.body);
+          orderId = data['order']?['id'] ?? '';
+          
+          // Save order ID
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('last_order_id', orderId);
+        } else {
+          print('Order creation failed: ${response.statusCode} - ${response.body}');
+        }
+        
+        // Navigate to matching screen
+        if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (_) => MatchingDriverScreen(
+                orderData: {
+                  'orderId': orderId,
+                  'order': _orderController.text,
+                  'address': _addressController.text,
+                  'notes': _notesController.text,
+                  'customerName': customerName,
+                  'customerPhone': customerPhone,
+                  'latitude': _latitude?.toString() ?? '',
+                  'longitude': _longitude?.toString() ?? '',
+                },
+              ),
+            ),
+          );
+        }
+      } catch (e) {
+        // If API fails, navigate anyway
+        if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (_) => MatchingDriverScreen(
+                orderData: {
+                  'order': _orderController.text,
+                  'address': _addressController.text,
+                  'notes': _notesController.text,
+                  'customerName': customerName,
+                  'customerPhone': customerPhone,
+                  'latitude': _latitude?.toString() ?? '',
+                  'longitude': _longitude?.toString() ?? '',
+                },
+              ),
+            ),
+          );
+        }
+      } finally {
+        if (mounted) {
+          setState(() => _isGettingLocation = false);
+        }
+      }
+    });
   }
 }
 
 // ==================== Matching Driver Screen ====================
 class MatchingDriverScreen extends StatefulWidget {
-  const MatchingDriverScreen({super.key});
+  final Map<String, String>? orderData;
+  
+  const MatchingDriverScreen({super.key, this.orderData});
 
   @override
   State<MatchingDriverScreen> createState() => _MatchingDriverScreenState();
@@ -1194,11 +2029,76 @@ class _MatchingDriverScreenState extends State<MatchingDriverScreen> with Single
   void initState() {
     super.initState();
     _controller = AnimationController(duration: const Duration(seconds: 2), vsync: this)..repeat();
-    Future.delayed(const Duration(seconds: 3), () {
+    _findNearestDriver();
+  }
+
+  Future<void> _findNearestDriver() async {
+    // Get customer location
+    final latStr = widget.orderData?['latitude'] ?? '';
+    final lngStr = widget.orderData?['longitude'] ?? '';
+    final address = widget.orderData?['address'] ?? '';
+    
+    if (latStr.isEmpty || lngStr.isEmpty) {
+      // No GPS coordinates, use address search
       if (mounted) {
-        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const OrderTrackingScreen()));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('جارٍ البحث عن أقرب سائق...'),
+            backgroundColor: Colors.blue,
+          ),
+        );
       }
-    });
+    }
+    
+    // TODO: Call API to find nearest driver
+    // This should:
+    // 1. Get customer location (latitude, longitude from orderData)
+    // 2. Find all available drivers with their current locations
+    // 3. Calculate distances using Geolocator.distanceBetween()
+    // 4. Sort drivers by distance
+    // 5. Send push notification to nearest driver
+    // 6. Wait for driver acceptance
+    
+    // Example calculation:
+    // double distanceInMeters = Geolocator.distanceBetween(
+    //   customerLat, customerLng,
+    //   driverLat, driverLng,
+    // );
+    
+    // Simulate API call
+    await Future.delayed(const Duration(seconds: 2));
+    
+    // TODO: Send push notification to nearest driver
+    // Example: await NotificationService.sendToDriver(nearestDriverId, {
+    //   'type': 'NEW_ORDER',
+    //   'orderId': orderId,
+    //   'customerLocation': {'lat': lat, 'lng': lng},
+    //   'address': address,
+    //   'distance': distanceInKm,
+    // });
+    
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('تم إرسال الطلب لأقرب سائق'),
+          backgroundColor: Colors.green,
+        ),
+      );
+      
+      // Navigate to tracking screen
+      await Future.delayed(const Duration(seconds: 1));
+      
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => OrderTrackingScreen(
+              orderData: widget.orderData,
+            ),
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -1215,7 +2115,7 @@ class _MatchingDriverScreenState extends State<MatchingDriverScreen> with Single
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Color(0xFF6C63FF), Color(0xFF4A42D1)],
+            colors: [AppColors.primary, AppColors.secondary],
           ),
         ),
         child: SafeArea(
@@ -1228,7 +2128,7 @@ class _MatchingDriverScreenState extends State<MatchingDriverScreen> with Single
                   width: 120,
                   height: 120,
                   decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(60)),
-                  child: const Icon(Icons.motorcycle, size: 60, color: Color(0xFF6C63FF)),
+                  child: const Icon(Icons.motorcycle, size: 60, color: AppColors.primary),
                 ),
               ),
               const SizedBox(height: 32),
@@ -1250,7 +2150,9 @@ class _MatchingDriverScreenState extends State<MatchingDriverScreen> with Single
 
 // ==================== Order Tracking Screen ====================
 class OrderTrackingScreen extends StatefulWidget {
-  const OrderTrackingScreen({super.key});
+  final Map<String, String>? orderData;
+  
+  const OrderTrackingScreen({super.key, this.orderData});
 
   @override
   State<OrderTrackingScreen> createState() => _OrderTrackingScreenState();
@@ -1258,19 +2160,85 @@ class OrderTrackingScreen extends StatefulWidget {
 
 class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
   String _status = 'accepted';
-  final String _deliveryCode = '1234';
+  String _deliveryCode = '1234';
+  String _driverName = 'السائق';
+  String _driverPhone = '+963';
+  double? _driverLat;
+  double? _driverLng;
+  Timer? _statusTimer;
+  Timer? _locationTimer;
 
   @override
   void initState() {
     super.initState();
-    Future.delayed(const Duration(seconds: 5), () { if (mounted) setState(() => _status = 'picked_up'); });
-    Future.delayed(const Duration(seconds: 10), () { if (mounted) setState(() => _status = 'arriving'); });
-    Future.delayed(const Duration(seconds: 15), () {
-      if (mounted) {
-        setState(() => _status = 'delivered');
-        Navigator.push(context, MaterialPageRoute(builder: (_) => CustomerDeliveryCodeScreen(deliveryCode: _deliveryCode)));
+    _loadOrderStatus();
+    _startLocationTracking();
+  }
+
+  @override
+  void dispose() {
+    _statusTimer?.cancel();
+    _locationTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _loadOrderStatus() async {
+    final orderId = widget.orderData?['orderId'];
+    if (orderId == null || orderId.isEmpty) return;
+
+    try {
+      final response = await http.get(Uri.parse(AppConfig.orderById(orderId)));
+      
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['success'] && data['order'] != null) {
+          final order = data['order'];
+          if (mounted) {
+            setState(() {
+              _status = _mapStatus(order['status']);
+              _deliveryCode = order['deliveryCode']?.toString() ?? '1234';
+              _driverName = order['Driver']?['User']?['name'] ?? 'السائق';
+              _driverPhone = order['Driver']?['User']?['phone'] ?? '+963';
+              final lat = order['Driver']?['latitude'];
+              final lng = order['Driver']?['longitude'];
+              _driverLat = lat != null ? double.tryParse(lat.toString()) : null;
+              _driverLng = lng != null ? double.tryParse(lng.toString()) : null;
+            });
+          }
+        }
       }
+    } catch (e) {
+      // Continue with default status
+    }
+  }
+
+  void _startLocationTracking() {
+    // Poll for status updates every 5 seconds
+    _statusTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
+      _loadOrderStatus();
     });
+  }
+
+  String _mapStatus(String? status) {
+    switch (status?.toUpperCase()) {
+      case 'REQUESTED':
+        return 'accepted';
+      case 'ASSIGNED':
+        return 'accepted';
+      case 'PICKED_UP':
+        return 'picked_up';
+      case 'EN_ROUTE':
+        return 'arriving';
+      case 'DELIVERED':
+        if (mounted) {
+          Future.delayed(const Duration(seconds: 1), () {
+            Navigator.push(context, MaterialPageRoute(builder: (_) => CustomerDeliveryCodeScreen(deliveryCode: _deliveryCode)));
+          });
+        }
+        return 'delivered';
+      default:
+        return 'accepted';
+    }
   }
 
   @override
@@ -1280,7 +2248,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
       child: Scaffold(
         appBar: AppBar(
           title: const Text('تتبع الطلب'),
-          backgroundColor: const Color(0xFF6C63FF),
+          backgroundColor: AppColors.primary,
           foregroundColor: Colors.white,
           automaticallyImplyLeading: false,
         ),
@@ -1299,20 +2267,50 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                   CircleAvatar(
                     radius: 30,
                     backgroundColor: const Color(0xFF6C63FF).withOpacity(0.1),
-                    child: const Icon(Icons.person, size: 35, color: Color(0xFF6C63FF)),
+                    child: const Icon(Icons.person, size: 35, color: AppColors.primary),
                   ),
                   const SizedBox(width: 16),
-                  const Expanded(
+                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('أحمد محمد', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                        Row(children: [Icon(Icons.star, color: Colors.amber, size: 18), Text(' 4.8', style: TextStyle(color: Colors.grey))]),
+                        Text(_driverName, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                        const Row(children: [Icon(Icons.star, color: Colors.amber, size: 18), Text(' 4.8', style: TextStyle(color: Colors.grey))]),
                       ],
                     ),
                   ),
-                  IconButton(onPressed: () {}, icon: const Icon(Icons.phone, color: Color(0xFF6C63FF))),
-                  IconButton(onPressed: () {}, icon: const Icon(Icons.chat, color: Color(0xFF6C63FF))),
+                  IconButton(
+                    onPressed: () async {
+                      final uri = Uri.parse('tel:${_driverPhone.replaceAll(' ', '')}');
+                      if (await canLaunchUrl(uri)) {
+                        await launchUrl(uri);
+                      }
+                    },
+                    icon: const Icon(Icons.phone, color: AppColors.primary),
+                    tooltip: 'اتصال',
+                  ),
+                  IconButton(
+                    onPressed: () async {
+                      final phone = _driverPhone.replaceAll('+', '').replaceAll(' ', '');
+                      final uri = Uri.parse('https://wa.me/$phone');
+                      if (await canLaunchUrl(uri)) {
+                        await launchUrl(uri, mode: LaunchMode.externalApplication);
+                      }
+                    },
+                    icon: const Icon(Icons.chat, color: AppColors.primary),
+                    tooltip: 'واتساب',
+                  ),
+                  if (_driverLat != null && _driverLng != null)
+                    IconButton(
+                      onPressed: () async {
+                        final uri = Uri.parse('https://www.google.com/maps/search/?api=1&query=$_driverLat,$_driverLng');
+                        if (await canLaunchUrl(uri)) {
+                          await launchUrl(uri, mode: LaunchMode.externalApplication);
+                        }
+                      },
+                      icon: const Icon(Icons.location_on, color: Colors.green),
+                      tooltip: 'موقع السائق',
+                    ),
                 ],
               ),
             ),
@@ -1332,6 +2330,64 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                     Text(_deliveryCode, style: const TextStyle(fontSize: 36, fontWeight: FontWeight.bold, letterSpacing: 8, color: Colors.green)),
                     const SizedBox(height: 8),
                     const Text('أعطِ هذا الكود للسائق عند الاستلام', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                  ],
+                ),
+              ),
+            if (_driverLat != null && _driverLng != null && (_status == 'picked_up' || _status == 'arriving'))
+              Container(
+                margin: const EdgeInsets.all(16),
+                height: 200,
+                decoration: BoxDecoration(
+                  color: Colors.grey[200],
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.grey[300]!),
+                ),
+                child: Stack(
+                  children: [
+                    Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.map, size: 48, color: Colors.grey),
+                          const SizedBox(height: 8),
+                          const Text('خريطة تتبع السائق', style: TextStyle(color: Colors.grey)),
+                          const SizedBox(height: 8),
+                          ElevatedButton.icon(
+                            onPressed: () async {
+                              final uri = Uri.parse('https://www.google.com/maps/search/?api=1&query=$_driverLat,$_driverLng');
+                              if (await canLaunchUrl(uri)) {
+                                await launchUrl(uri, mode: LaunchMode.externalApplication);
+                              }
+                            },
+                            icon: const Icon(Icons.open_in_new),
+                            label: const Text('فتح الخريطة'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.primary,
+                              foregroundColor: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Colors.green,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.location_on, color: Colors.white, size: 16),
+                            SizedBox(width: 4),
+                            Text('السائق متصل', style: TextStyle(color: Colors.white, fontSize: 12)),
+                          ],
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -1372,12 +2428,12 @@ class _StatusItem extends StatelessWidget {
               width: 24,
               height: 24,
               decoration: BoxDecoration(
-                color: isCompleted || isActive ? const Color(0xFF6C63FF) : Colors.grey[300],
+                color: isCompleted || isActive ? AppColors.primary : Colors.grey[300],
                 shape: BoxShape.circle,
               ),
               child: isCompleted ? const Icon(Icons.check, color: Colors.white, size: 16) : null,
             ),
-            Container(width: 2, height: 50, color: isCompleted ? const Color(0xFF6C63FF) : Colors.grey[300]),
+            Container(width: 2, height: 50, color: isCompleted ? AppColors.primary : Colors.grey[300]),
           ],
         ),
         const SizedBox(width: 16),
@@ -1385,7 +2441,7 @@ class _StatusItem extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isActive ? const Color(0xFF6C63FF) : Colors.black)),
+              Text(title, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isActive ? AppColors.primary : Colors.black)),
               Text(subtitle, style: TextStyle(color: Colors.grey[600])),
               const SizedBox(height: 24),
             ],
@@ -1411,8 +2467,12 @@ class _CustomerDeliveryCodeScreenState extends State<CustomerDeliveryCodeScreen>
 
   @override
   void dispose() {
-    for (var c in _controllers) c.dispose();
-    for (var f in _focusNodes) f.dispose();
+    for (var c in _controllers) {
+      c.dispose();
+    }
+    for (var f in _focusNodes) {
+      f.dispose();
+    }
     super.dispose();
   }
 
@@ -1432,7 +2492,7 @@ class _CustomerDeliveryCodeScreenState extends State<CustomerDeliveryCodeScreen>
       child: Scaffold(
         body: Container(
           decoration: const BoxDecoration(
-            gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFF6C63FF), Color(0xFF4A42D1)]),
+            gradient: AppColors.primaryGradient,
           ),
           child: SafeArea(
             child: Padding(
@@ -1441,9 +2501,10 @@ class _CustomerDeliveryCodeScreenState extends State<CustomerDeliveryCodeScreen>
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Container(
-                    width: 100, height: 100,
+                    width: 100,
+                    height: 100,
                     decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(50)),
-                    child: const Icon(Icons.delivery_dining, size: 50, color: Color(0xFF6C63FF)),
+                    child: const Icon(Icons.delivery_dining, size: 50, color: AppColors.primary),
                   ),
                   const SizedBox(height: 32),
                   const Text('السائق وصل! 🎉', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white)),
@@ -1488,7 +2549,7 @@ class _CustomerDeliveryCodeScreenState extends State<CustomerDeliveryCodeScreen>
                     onPressed: _verifyCode,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.white,
-                      foregroundColor: const Color(0xFF6C63FF),
+                      foregroundColor: AppColors.primary,
                       padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 16),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
@@ -1535,8 +2596,8 @@ class _RateDriverScreenState extends State<RateDriverScreen> {
                 const SizedBox(height: 32),
                 CircleAvatar(
                   radius: 40,
-                  backgroundColor: const Color(0xFF6C63FF).withOpacity(0.1),
-                  child: const Icon(Icons.person, size: 45, color: Color(0xFF6C63FF)),
+                  backgroundColor: AppColors.primary.withOpacity(0.1),
+                  child: const Icon(Icons.person, size: 45, color: AppColors.primary),
                 ),
                 const SizedBox(height: 8),
                 const Text('أحمد محمد', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
@@ -1568,7 +2629,7 @@ class _RateDriverScreenState extends State<RateDriverScreen> {
                   child: ElevatedButton(
                     onPressed: _rating > 0 ? _submitRating : null,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF6C63FF),
+                      backgroundColor: AppColors.primary,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -1588,12 +2649,18 @@ class _RateDriverScreenState extends State<RateDriverScreen> {
 
   String _getRatingText(int rating) {
     switch (rating) {
-      case 1: return 'سيء 😞';
-      case 2: return 'مقبول 😐';
-      case 3: return 'جيد 🙂';
-      case 4: return 'جيد جداً 😊';
-      case 5: return 'ممتاز! 🌟';
-      default: return '';
+      case 1:
+        return 'سيء 😞';
+      case 2:
+        return 'مقبول 😐';
+      case 3:
+        return 'جيد 🙂';
+      case 4:
+        return 'جيد جداً 😊';
+      case 5:
+        return 'ممتاز! 🌟';
+      default:
+        return '';
     }
   }
 

@@ -1,5 +1,13 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'config/app_config.dart';
+import 'config/app_colors.dart';
 
 // ==================== Driver Main App ====================
 class DriverApp extends StatelessWidget {
@@ -11,8 +19,17 @@ class DriverApp extends StatelessWidget {
       title: 'دلّعني - سائق',
       debugShowCheckedModeBanner: false,
       locale: const Locale('ar'),
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: const [
+        Locale('ar'),
+        Locale('en'),
+      ],
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF6C63FF)),
+        colorScheme: ColorScheme.fromSeed(seedColor: AppColors.primary),
         useMaterial3: true,
         fontFamily: 'Cairo',
       ),
@@ -34,6 +51,17 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
   final _phoneController = TextEditingController();
   bool _isLoading = false;
   String? _accountStatus; // null, 'PENDING_REVIEW', 'APPROVED', 'REJECTED'
+  
+  @override
+  void initState() {
+    super.initState();
+  }
+  
+  @override
+  void dispose() {
+    _phoneController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -43,7 +71,7 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Color(0xFF6C63FF), Color(0xFF4A42D1)],
+            colors: [AppColors.primary, AppColors.secondary],
           ),
         ),
         child: SafeArea(
@@ -55,7 +83,7 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
                 Container(
                   width: 100, height: 100,
                   decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(25)),
-                  child: const Icon(Icons.motorcycle, size: 50, color: Color(0xFF6C63FF)),
+                  child: const Icon(Icons.motorcycle, size: 50, color: AppColors.primary),
                 ),
                 const SizedBox(height: 24),
                 const Text('دلّعني - سائق', style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.white)),
@@ -68,7 +96,7 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
                   keyboardType: TextInputType.phone,
                   style: const TextStyle(fontSize: 18),
                   decoration: InputDecoration(
-                    hintText: 'رقم الهاتف',
+                    hintText: '936XXXXXX',
                     prefixIcon: const Icon(Icons.phone),
                     filled: true,
                     fillColor: Colors.white,
@@ -83,7 +111,7 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
                     onPressed: _isLoading ? null : _checkStatus,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.white,
-                      foregroundColor: const Color(0xFF6C63FF),
+                      foregroundColor: const Color.fromARGB(255, 255, 138, 14),
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
@@ -159,21 +187,77 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
   }
 
   Future<void> _checkStatus() async {
-    if (_phoneController.text.length < 10) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('رقم الهاتف غير صحيح')));
+    final phone = _phoneController.text.trim();
+    if (phone.isEmpty || phone.length < 9) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('الرجاء إدخال رقم هاتف صحيح')),
+      );
       return;
     }
     
+    // Add +963 prefix
+    final fullPhone = phone.startsWith('+963') ? phone : '+963$phone';
+    
     setState(() => _isLoading = true);
     
-    // TODO: Call API /auth/driver/status/:phone
-    await Future.delayed(const Duration(seconds: 1));
-    
-    // Mock: Assume approved for demo
-    setState(() {
-      _isLoading = false;
-      _accountStatus = 'APPROVED';
-    });
+    try {
+      // Call API to check driver status by phone
+      final url = Uri.parse(AppConfig.driverStatusByPhone(fullPhone));
+      final response = await http.get(url);
+      
+      String driverStatus = 'PENDING_REVIEW';
+      
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['success'] == true && data['status'] != null) {
+          driverStatus = data['status'].toString();
+        } else if (data['driver'] != null && data['driver']['accountStatus'] != null) {
+          driverStatus = data['driver']['accountStatus'].toString();
+        }
+      } else if (response.statusCode == 404) {
+        // Driver not found - show registration option
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+            _accountStatus = null;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('لا يوجد حساب بهذا الرقم. يرجى التسجيل أولاً'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
+      
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _accountStatus = driverStatus;
+        });
+        
+        // Save login state
+        if (driverStatus == 'APPROVED') {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setBool('is_logged_in', true);
+          await prefs.setString('user_type', 'driver');
+          await prefs.setString('driver_phone', fullPhone);
+          await prefs.setString('driver_status', driverStatus);
+          await prefs.setString('login_time', DateTime.now().toIso8601String());
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('حدث خطأ: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 }
 
@@ -188,14 +272,73 @@ class DriverHomeScreen extends StatefulWidget {
 class _DriverHomeScreenState extends State<DriverHomeScreen> {
   bool _isOnline = false;
   int _selectedIndex = 0;
-  List<Map<String, dynamic>> _incomingRequests = [];
-  List<Map<String, dynamic>> _acceptedJobs = [];
+  final List<Map<String, dynamic>> _incomingRequests = [];
+  final List<Map<String, dynamic>> _acceptedJobs = [];
+  Position? _currentPosition;
+  StreamSubscription<Position>? _positionStream;
 
   @override
   void initState() {
     super.initState();
     // Listen for push notifications
     _setupNotificationListener();
+    // Start location tracking when online
+    _startLocationTracking();
+  }
+
+  @override
+  void dispose() {
+    _positionStream?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _startLocationTracking() async {
+    // Request location permission
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) return;
+
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) return;
+    }
+
+    if (permission == LocationPermission.deniedForever) return;
+
+    // Get initial position
+    _currentPosition = await Geolocator.getCurrentPosition();
+    
+    // Start listening to position updates
+    _positionStream = Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 10, // Update every 10 meters
+      ),
+    ).listen((Position position) {
+      setState(() {
+        _currentPosition = position;
+      });
+      
+      // Send location to server when online
+      if (_isOnline) {
+        _updateDriverLocation(position);
+      }
+    });
+  }
+
+  Future<void> _updateDriverLocation(Position position) async {
+    // TODO: Send location to server
+    // await http.post('/api/driver/location', body: {
+    //   'driverId': driverId,
+    //   'latitude': position.latitude,
+    //   'longitude': position.longitude,
+    //   'timestamp': DateTime.now().toIso8601String(),
+    // });
+    
+    // Save to local storage
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble('driver_latitude', position.latitude);
+    await prefs.setDouble('driver_longitude', position.longitude);
   }
 
   void _setupNotificationListener() {
@@ -222,12 +365,14 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   void _showIncomingRequest(Map<String, dynamic> order) {
     setState(() => _incomingRequests.add(order));
     
-    // Show dialog
+    // Show notification dialog even if app is in background
+    // This simulates push notification
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => _IncomingOrderDialog(
         order: order,
+        distance: order['distance'] ?? 0.0,
         onAccept: () {
           Navigator.pop(context);
           _acceptOrder(order);
@@ -258,7 +403,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('دلّعني - سائق'),
-        backgroundColor: const Color(0xFF6C63FF),
+        backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
         actions: [
           // Online/Offline Toggle
@@ -283,8 +428,19 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                 Text(_isOnline ? 'متصل' : 'غير متصل', style: const TextStyle(fontSize: 12)),
                 Switch(
                   value: _isOnline,
-                  onChanged: (v) => setState(() => _isOnline = v),
-                  activeColor: Colors.green,
+                  onChanged: (v) {
+                    setState(() {
+                      _isOnline = v;
+                      if (v) {
+                        // Start location tracking when going online
+                        _startLocationTracking();
+                      } else {
+                        // Stop location tracking when going offline
+                        _positionStream?.cancel();
+                      }
+                    });
+                  },
+                  activeThumbColor: Colors.green,
                   materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
               ],
@@ -305,7 +461,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         currentIndex: _selectedIndex,
         onTap: (i) => setState(() => _selectedIndex = i),
         type: BottomNavigationBarType.fixed,
-        selectedItemColor: const Color(0xFF6C63FF),
+        selectedItemColor: AppColors.primary,
         items: [
           const BottomNavigationBarItem(icon: Icon(Icons.home), label: 'الرئيسية'),
           BottomNavigationBarItem(
@@ -340,7 +496,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
               icon: const Icon(Icons.power_settings_new),
               label: const Text('اتصل الآن'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF6C63FF),
+                backgroundColor: AppColors.primary,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
               ),
@@ -427,10 +583,16 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
 // ==================== Incoming Order Dialog ====================
 class _IncomingOrderDialog extends StatefulWidget {
   final Map<String, dynamic> order;
+  final double distance;
   final VoidCallback onAccept;
   final VoidCallback onReject;
 
-  const _IncomingOrderDialog({required this.order, required this.onAccept, required this.onReject});
+  const _IncomingOrderDialog({
+    required this.order,
+    this.distance = 0.0,
+    required this.onAccept,
+    required this.onReject,
+  });
 
   @override
   State<_IncomingOrderDialog> createState() => _IncomingOrderDialogState();
@@ -464,7 +626,7 @@ class _IncomingOrderDialogState extends State<_IncomingOrderDialog> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       title: Row(
         children: [
-          const Icon(Icons.notifications_active, color: Color(0xFF6C63FF)),
+          const Icon(Icons.notifications_active, color: AppColors.primary),
           const SizedBox(width: 8),
           const Expanded(child: Text('طلب جديد!')),
           Container(
@@ -485,6 +647,8 @@ class _IncomingOrderDialogState extends State<_IncomingOrderDialog> {
           const SizedBox(height: 12),
           _InfoRow(icon: Icons.store, label: 'من', value: widget.order['pickupAddress'] ?? ''),
           _InfoRow(icon: Icons.location_on, label: 'إلى', value: widget.order['deliveryAddress'] ?? ''),
+          if (widget.distance > 0)
+            _InfoRow(icon: Icons.straighten, label: 'المسافة', value: '${widget.distance.toStringAsFixed(1)} كم'),
           if (widget.order['estimatedPrice'] != null)
             _InfoRow(icon: Icons.attach_money, label: 'السعر التقديري', value: '${widget.order['estimatedPrice']} دينار'),
         ],
@@ -497,7 +661,7 @@ class _IncomingOrderDialogState extends State<_IncomingOrderDialog> {
         ElevatedButton(
           onPressed: widget.onAccept,
           style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF6C63FF),
+            backgroundColor: AppColors.primary,
             foregroundColor: Colors.white,
             padding: const EdgeInsets.symmetric(horizontal: 32),
           ),
@@ -602,11 +766,11 @@ class _JobCard extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 8),
-              Row(
+              const Row(
                 children: [
-                  const Icon(Icons.arrow_forward, size: 16, color: Color(0xFF6C63FF)),
-                  const SizedBox(width: 4),
-                  const Text('عرض التفاصيل', style: TextStyle(color: Color(0xFF6C63FF), fontWeight: FontWeight.bold)),
+                  Icon(Icons.arrow_forward, size: 16, color: AppColors.primary),
+                  SizedBox(width: 4),
+                  Text('عرض التفاصيل', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold)),
                 ],
               ),
             ],
@@ -643,7 +807,7 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text('طلب #${(_job['id'] ?? '').toString().substring(0, 8)}'),
-        backgroundColor: const Color(0xFF6C63FF),
+        backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
       ),
       body: SingleChildScrollView(
@@ -676,7 +840,7 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(colors: [Color(0xFF6C63FF), Color(0xFF4A42D1)]),
+        gradient: AppColors.primaryGradient,
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
@@ -713,8 +877,8 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
             Row(
               children: [
                 CircleAvatar(
-                  backgroundColor: const Color(0xFF6C63FF).withOpacity(0.1),
-                  child: const Icon(Icons.person, color: Color(0xFF6C63FF)),
+                  backgroundColor: AppColors.primary.withOpacity(0.1),
+                  child: const Icon(Icons.person, color: AppColors.primary),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -790,11 +954,11 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
             
             if (_job['invoiceImageUrl'] != null) ...[
               const SizedBox(height: 12),
-              Row(
+              const Row(
                 children: [
-                  const Icon(Icons.receipt, color: Colors.green, size: 20),
-                  const SizedBox(width: 8),
-                  const Text('تم رفع الفاتورة ✓', style: TextStyle(color: Colors.green)),
+                  Icon(Icons.receipt, color: Colors.green, size: 20),
+                  SizedBox(width: 8),
+                  Text('تم رفع الفاتورة ✓', style: TextStyle(color: Colors.green)),
                 ],
               ),
             ],
@@ -829,7 +993,7 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
               icon: const Icon(Icons.camera_alt),
               label: const Text('رفع صورة الفاتورة (مطلوب)'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF6C63FF),
+                backgroundColor: AppColors.primary,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -913,10 +1077,27 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
   }
 
   void _navigateToCustomer() async {
-    final address = Uri.encodeComponent(_job['deliveryAddress'] ?? '');
-    final uri = Uri.parse('https://www.google.com/maps/search/?api=1&query=$address');
+    // Try to use GPS coordinates first, then fallback to address
+    final lat = _job['latitude'];
+    final lng = _job['longitude'];
+    final address = _job['deliveryAddress'] ?? '';
+    
+    Uri uri;
+    if (lat != null && lat.toString().isNotEmpty && lng != null && lng.toString().isNotEmpty) {
+      // Use GPS coordinates for precise location
+      uri = Uri.parse('https://www.google.com/maps/search/?api=1&query=$lat,$lng');
+    } else {
+      // Fallback to address search
+      final encodedAddress = Uri.encodeComponent(address);
+      uri = Uri.parse('https://www.google.com/maps/search/?api=1&query=$encodedAddress');
+    }
+    
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('لا يمكن فتح تطبيق الخرائط')),
+      );
     }
   }
 
@@ -929,7 +1110,8 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
     
     setState(() {
       _isLoading = false;
-      _job['invoiceImageUrl'] = 'https://example.com/invoice.jpg';
+      // Invoice URL will be set by API response after upload
+      // _job['invoiceImageUrl'] = uploadResponse['imageUrl'];
       _job['status'] = 'PICKED_UP';
     });
     
@@ -980,7 +1162,7 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
                 _verifyDeliveryCode(codeController.text);
               }
             },
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6C63FF)),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
             child: const Text('تأكيد'),
           ),
         ],
@@ -1048,7 +1230,7 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
               Navigator.pop(context);
               Navigator.pop(context);
             },
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6C63FF)),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
             child: const Text('حسناً'),
           ),
         ],
@@ -1071,7 +1253,7 @@ class _DetailRow extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 20, color: const Color(0xFF6C63FF)),
+          Icon(icon, size: 20, color: AppColors.primary),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -1108,7 +1290,7 @@ class DriverWalletScreen extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              gradient: const LinearGradient(colors: [Color(0xFF6C63FF), Color(0xFF4A42D1)]),
+              gradient: AppColors.primaryGradient,
               borderRadius: BorderRadius.circular(20),
             ),
             child: Column(
@@ -1131,7 +1313,7 @@ class DriverWalletScreen extends StatelessWidget {
           const SizedBox(height: 16),
           
           // Stats Row
-          Row(
+          const Row(
             children: [
               Expanded(
                 child: _StatCard(
@@ -1141,7 +1323,7 @@ class DriverWalletScreen extends StatelessWidget {
                   color: Colors.green,
                 ),
               ),
-              const SizedBox(width: 12),
+              SizedBox(width: 12),
               Expanded(
                 child: _StatCard(
                   icon: Icons.account_balance_wallet,
@@ -1185,8 +1367,8 @@ class DriverWalletScreen extends StatelessWidget {
             margin: const EdgeInsets.only(bottom: 8),
             child: ListTile(
               leading: CircleAvatar(
-                backgroundColor: const Color(0xFF6C63FF).withOpacity(0.1),
-                child: const Icon(Icons.receipt, color: Color(0xFF6C63FF)),
+                backgroundColor: AppColors.primary.withOpacity(0.1),
+                child: const Icon(Icons.receipt, color: AppColors.primary),
               ),
               title: Text('طلب #${1000 + i}'),
               subtitle: Text('${DateTime.now().subtract(Duration(hours: i * 3)).day}/11/2025'),
@@ -1241,7 +1423,7 @@ class DriverProfileScreen extends StatelessWidget {
           const SizedBox(height: 24),
           const CircleAvatar(
             radius: 50,
-            backgroundColor: Color(0xFF6C63FF),
+            backgroundColor: AppColors.primary,
             child: Icon(Icons.person, size: 50, color: Colors.white),
           ),
           const SizedBox(height: 16),
@@ -1264,11 +1446,11 @@ class DriverProfileScreen extends StatelessWidget {
           ),
           const SizedBox(height: 24),
           
-          _ProfileTile(icon: Icons.phone, title: 'رقم الهاتف', value: '079 123 4567'),
-          _ProfileTile(icon: Icons.motorcycle, title: 'رقم اللوحة', value: '12-34567'),
-          _ProfileTile(icon: Icons.two_wheeler, title: 'موديل الدراجة', value: 'Honda CG 125'),
-          _ProfileTile(icon: Icons.location_on, title: 'المناطق', value: 'وسط البلد، الجبيهة، عبدون'),
-          _ProfileTile(icon: Icons.access_time, title: 'ساعات العمل', value: '8:00 ص - 10:00 م'),
+          const _ProfileTile(icon: Icons.phone, title: 'رقم الهاتف', value: '079 123 4567'),
+          const _ProfileTile(icon: Icons.motorcycle, title: 'رقم اللوحة', value: '12-34567'),
+          const _ProfileTile(icon: Icons.two_wheeler, title: 'موديل الدراجة', value: 'Honda CG 125'),
+          const _ProfileTile(icon: Icons.location_on, title: 'المناطق', value: 'وسط البلد، الجبيهة، عبدون'),
+          const _ProfileTile(icon: Icons.access_time, title: 'ساعات العمل', value: '8:00 ص - 10:00 م'),
           
           const SizedBox(height: 24),
           SizedBox(
@@ -1314,10 +1496,10 @@ class _ProfileTile extends StatelessWidget {
         leading: Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: const Color(0xFF6C63FF).withOpacity(0.1),
+            color: AppColors.primary.withOpacity(0.1),
             borderRadius: BorderRadius.circular(8),
           ),
-          child: Icon(icon, color: const Color(0xFF6C63FF)),
+          child: Icon(icon, color: AppColors.primary),
         ),
         title: Text(title, style: const TextStyle(fontSize: 12, color: Colors.grey)),
         subtitle: Text(value, style: const TextStyle(fontWeight: FontWeight.bold)),

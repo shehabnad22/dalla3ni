@@ -1,5 +1,6 @@
 /// Feature Flags Configuration
 /// Toggle features on/off without code changes
+library;
 
 class FeatureFlags {
   // Stores feature - DISABLED

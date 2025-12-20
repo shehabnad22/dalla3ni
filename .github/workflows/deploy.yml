@@ -1,0 +1,58 @@
+name: Deploy to Render
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  deploy-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+      
+      - name: Install dependencies
+        working-directory: ./backend
+        run: npm ci
+      
+      - name: Deploy to Render
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+        run: |
+          # This would require Render API integration
+          # For now, manual deployment via dashboard is recommended
+          echo "Deployment triggered. Please deploy via Render dashboard."
+
+  deploy-admin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: admin-dashboard/package-lock.json
+      
+      - name: Install dependencies
+        working-directory: ./admin-dashboard
+        run: npm ci
+      
+      - name: Build
+        working-directory: ./admin-dashboard
+        env:
+          REACT_APP_API_URL: ${{ secrets.REACT_APP_API_URL }}
+        run: npm run build
+      
+      - name: Deploy to Render Static
+        # Static site deployment would go here
+        run: echo "Admin panel built. Deploy via Render dashboard."
+

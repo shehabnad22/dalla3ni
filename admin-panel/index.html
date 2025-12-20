@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>لوحة تحكم دلّعني - Admin Panel</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="admin-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h2><i class="fas fa-motorcycle"></i> دلّعني</h2>
+                <p>لوحة التحكم</p>
+            </div>
+            <nav class="sidebar-nav">
+                <a href="#" class="nav-item active" data-page="dashboard">
+                    <i class="fas fa-home"></i> الرئيسية
+                </a>
+                <a href="#" class="nav-item" data-page="users">
+                    <i class="fas fa-users"></i> المستخدمين
+                </a>
+                <a href="#" class="nav-item" data-page="drivers">
+                    <i class="fas fa-motorcycle"></i> السائقين
+                </a>
+                <a href="#" class="nav-item" data-page="orders">
+                    <i class="fas fa-shopping-bag"></i> الطلبات
+                </a>
+                <a href="#" class="nav-item" data-page="invoices">
+                    <i class="fas fa-receipt"></i> الفواتير
+                </a>
+                <a href="#" class="nav-item" data-page="tracking">
+                    <i class="fas fa-map-marked-alt"></i> تتبع الميتور
+                </a>
+                <a href="#" class="nav-item" data-page="statistics">
+                    <i class="fas fa-chart-bar"></i> الإحصائيات
+                </a>
+                <a href="#" class="nav-item" data-page="delayed">
+                    <i class="fas fa-clock"></i> المتأخرين
+                </a>
+            </nav>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="top-header">
+                <div id="connection-status" style="position: absolute; top: 10px; right: 10px; padding: 5px 10px; border-radius: 5px; font-size: 12px; background: #f0f0f0;">
+                    <span id="status-indicator">🔄 جاري التحقق...</span>
+                </div>
+                <h1 id="page-title">لوحة التحكم</h1>
+                <div class="header-actions">
+                    <button class="btn btn-primary" onclick="refreshData()">
+                        <i class="fas fa-sync-alt"></i> تحديث
+                    </button>
+                    <button class="btn btn-secondary" onclick="logout()">
+                        <i class="fas fa-sign-out-alt"></i> تسجيل الخروج
+                    </button>
+                </div>
+            </header>
+
+            <!-- Dashboard Page -->
+            <div id="dashboard" class="page active">
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon blue">
+                            <i class="fas fa-users"></i>
+                        </div>
+                        <div class="stat-info">
+                            <h3 id="total-users">0</h3>
+                            <p>إجمالي المستخدمين</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon green">
+                            <i class="fas fa-motorcycle"></i>
+                        </div>
+                        <div class="stat-info">
+                            <h3 id="total-drivers">0</h3>
+                            <p>إجمالي السائقين</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon orange">
+                            <i class="fas fa-shopping-bag"></i>
+                        </div>
+                        <div class="stat-info">
+                            <h3 id="total-orders">0</h3>
+                            <p>إجمالي الطلبات</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon red">
+                            <i class="fas fa-clock"></i>
+                        </div>
+                        <div class="stat-info">
+                            <h3 id="delayed-count">0</h3>
+                            <p>المتأخرين</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="dashboard-grid">
+                    <div class="dashboard-card">
+                        <h3><i class="fas fa-chart-line"></i> الطلبات اليوم</h3>
+                        <canvas id="ordersChart"></canvas>
+                    </div>
+                    <div class="dashboard-card">
+                        <h3><i class="fas fa-star"></i> أفضل السائقين</h3>
+                        <div id="top-drivers-list"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Users Page -->
+            <div id="users" class="page">
+                <div class="page-header">
+                    <h2>سجلات المستخدمين</h2>
+                    <div class="filter-controls">
+                        <select id="sort-users" class="form-control">
+                            <option value="newest">الأحدث أولاً</option>
+                            <option value="oldest">الأقدم أولاً</option>
+                            <option value="name-asc">حسب الاسم (أ-ي)</option>
+                            <option value="name-desc">حسب الاسم (ي-أ)</option>
+                        </select>
+                        <input type="text" id="search-users" class="form-control" placeholder="بحث...">
+                    </div>
+                </div>
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>الاسم</th>
+                                <th>رقم الهاتف</th>
+                                <th>وقت التسجيل</th>
+                                <th>عدد الطلبات</th>
+                                <th>الإجراءات</th>
+                            </tr>
+                        </thead>
+                        <tbody id="users-table-body">
+                            <!-- Data will be loaded here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Drivers Page -->
+            <div id="drivers" class="page">
+                <div class="page-header">
+                    <h2>السائقين</h2>
+                    <div class="filter-controls">
+                        <select id="driver-status-filter" class="form-control">
+                            <option value="all">الكل</option>
+                            <option value="online">متصل</option>
+                            <option value="offline">غير متصل</option>
+                            <option value="on-delivery">في التوصيل</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>الاسم</th>
+                                <th>رقم الهاتف</th>
+                                <th>الحالة</th>
+                                <th>التقييم</th>
+                                <th>عدد الطلبات</th>
+                                <th>الإجراءات</th>
+                            </tr>
+                        </thead>
+                        <tbody id="drivers-table-body">
+                            <!-- Data will be loaded here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Orders Page -->
+            <div id="orders" class="page">
+                <div class="page-header">
+                    <h2>الطلبات</h2>
+                    <div class="filter-controls">
+                        <select id="order-status-filter" class="form-control">
+                            <option value="all">الكل</option>
+                            <option value="pending">قيد الانتظار</option>
+                            <option value="accepted">مقبول</option>
+                            <option value="picked_up">تم الاستلام</option>
+                            <option value="delivered">تم التوصيل</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>رقم الطلب</th>
+                                <th>الزبون</th>
+                                <th>السائق</th>
+                                <th>الحالة</th>
+                                <th>الوقت</th>
+                                <th>الإجراءات</th>
+                            </tr>
+                        </thead>
+                        <tbody id="orders-table-body">
+                            <!-- Data will be loaded here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Invoices Page -->
+            <div id="invoices" class="page">
+                <div class="page-header">
+                    <h2>الفواتير</h2>
+                    <div class="filter-controls">
+                        <select id="invoice-location-filter" class="form-control">
+                            <option value="all">الكل</option>
+                        </select>
+                    </div>
+                </div>
+                <div id="invoices-container" class="invoices-grid">
+                    <!-- Invoices grouped by location will be loaded here -->
+                </div>
+            </div>
+
+            <!-- Tracking Page -->
+            <div id="tracking" class="page">
+                <div class="page-header">
+                    <h2>تتبع الميتور</h2>
+                </div>
+                <div class="tracking-container">
+                    <div class="active-deliveries">
+                        <h3>التوصيلات النشطة</h3>
+                        <div id="active-deliveries-list"></div>
+                    </div>
+                    <div class="map-container">
+                        <div id="map" class="map-placeholder">
+                            <i class="fas fa-map"></i>
+                            <p>خريطة تتبع الميتور</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Statistics Page -->
+            <div id="statistics" class="page">
+                <div class="page-header">
+                    <h2>الإحصائيات</h2>
+                </div>
+                <div class="stats-sections">
+                    <div class="stat-section">
+                        <h3><i class="fas fa-user-check"></i> أكثر المستخدمين طلباً</h3>
+                        <div id="top-users-list" class="ranking-list"></div>
+                    </div>
+                    <div class="stat-section">
+                        <h3><i class="fas fa-star"></i> أكثر السائقين تقييماً</h3>
+                        <div id="top-rated-drivers-list" class="ranking-list"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Delayed Drivers Page -->
+            <div id="delayed" class="page">
+                <div class="page-header">
+                    <h2>السائقين المتأخرين</h2>
+                </div>
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>السائق</th>
+                                <th>رقم الهاتف</th>
+                                <th>الطلب</th>
+                                <th>الوقت المتوقع</th>
+                                <th>الوقت الفعلي</th>
+                                <th>التأخير</th>
+                                <th>الإجراءات</th>
+                            </tr>
+                        </thead>
+                        <tbody id="delayed-table-body">
+                            <!-- Data will be loaded here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Invoice Modal -->
+    <div id="invoice-modal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal('invoice-modal')">&times;</span>
+            <h2>تفاصيل الفاتورة</h2>
+            <div id="invoice-details"></div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
+

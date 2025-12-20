@@ -1,0 +1,118 @@
+{
+  "app": {
+    "name": "دلّعني",
+    "nameEn": "Dalla3ni",
+    "tagline": "خدمة التوصيل السريع"
+  },
+  "onboarding": {
+    "selectRole": "اختر نوع حسابك",
+    "customer": {
+      "title": "زبون",
+      "subtitle": "اطلب توصيل سريع"
+    },
+    "driver": {
+      "title": "سائق ميتور",
+      "subtitle": "انضم كسائق توصيل"
+    },
+    "storeOwner": {
+      "title": "صاحب متجر",
+      "subtitle": "سجّل متجرك معنا",
+      "comingSoon": "قريباً"
+    }
+  },
+  "auth": {
+    "customer": {
+      "registerTitle": "تسجيل زبون جديد",
+      "enterInfo": "أدخل بياناتك",
+      "otpMessage": "سنرسل لك رمز التحقق عبر واتساب",
+      "fullName": "الاسم الكامل",
+      "phone": "رقم الهاتف",
+      "phoneHint": "07XXXXXXXX",
+      "sendOtp": "إرسال رمز التحقق",
+      "verifyOtp": "أدخل رمز التحقق",
+      "otpSentTo": "تم إرسال رمز التحقق إلى",
+      "resendOtp": "إعادة إرسال الرمز",
+      "resendAfter": "إعادة الإرسال بعد",
+      "seconds": "ثانية",
+      "confirm": "تأكيد"
+    },
+    "driver": {
+      "registerTitle": "تسجيل سائق جديد",
+      "personalInfo": "البيانات الشخصية",
+      "documents": "الوثائق",
+      "areas": "مناطق العمل",
+      "workingHours": "ساعات العمل",
+      "terms": "الشروط والأحكام",
+      "idPhoto": "صورة الهوية الشخصية",
+      "bikePhoto": "صورة الدراجة النارية",
+      "plateNumber": "رقم لوحة الدراجة",
+      "bikeModel": "موديل الدراجة",
+      "selectAreas": "اختر المناطق التي تعمل بها",
+      "fromTime": "من الساعة",
+      "toTime": "إلى الساعة",
+      "acceptTerms": "أوافق على الشروط والأحكام",
+      "acceptSettlement": "ألتزم بالتسوية اليومية",
+      "acceptIdStorage": "أسمح بتخزين صورة الهوية",
+      "submit": "إرسال الطلب",
+      "next": "التالي",
+      "back": "رجوع",
+      "reviewMessage": "سيتم مراجعة طلبك من قبل الإدارة والرد خلال 24-48 ساعة"
+    }
+  },
+  "home": {
+    "welcome": "مرحباً بك",
+    "whatDoYouWant": "ماذا تريد أن نوصّل لك اليوم؟",
+    "writeOrder": "اكتب طلبك",
+    "writeOrderSubtitle": "اكتب ما تريد ونوصّله لك"
+  },
+  "order": {
+    "create": "اكتب طلبك",
+    "whatDoYouWant": "ماذا تريد؟",
+    "writeDetails": "اكتب طلبك بالتفصيل",
+    "deliveryAddress": "عنوان التوصيل",
+    "enterAddress": "أدخل عنوان التوصيل بالتفصيل",
+    "estimatedPrice": "السعر التقديري (اختياري)",
+    "notes": "ملاحظات إضافية",
+    "confirmOrder": "تأكيد الطلب",
+    "matching": "جاري البحث عن سائق...",
+    "matchingSubtitle": "نبحث عن أقرب سائق متاح في منطقتك",
+    "cancelOrder": "إلغاء الطلب"
+  },
+  "driver": {
+    "appName": "دلّعني - سائق",
+    "login": "تسجيل الدخول",
+    "enterPhone": "رقم الهاتف",
+    "online": "متصل",
+    "offline": "غير متصل",
+    "waitingOrders": "في انتظار طلبات جديدة...",
+    "newOrder": "طلب جديد!",
+    "accept": "آخذ",
+    "reject": "رفض",
+    "pickup": "استلام الطلب",
+    "navigateToStore": "الملاحة إلى المحل",
+    "uploadInvoice": "رفع صورة الفاتورة (مطلوب)",
+    "deliver": "التوصيل",
+    "deliveryCode": "كود التسليم",
+    "enterCode": "اطلب من الزبون كود التسليم المكون من 4 أرقام",
+    "confirmDelivery": "تأكيد التسليم",
+    "completed": "تم إكمال الطلب بنجاح!",
+    "commissionAdded": "العمولة المضافة:"
+  },
+  "common": {
+    "required": "مطلوب",
+    "optional": "اختياري",
+    "cancel": "إلغاء",
+    "save": "حفظ",
+    "delete": "حذف",
+    "edit": "تعديل",
+    "view": "عرض",
+    "close": "إغلاق",
+    "ok": "حسناً",
+    "loading": "جاري التحميل...",
+    "error": "حدث خطأ",
+    "success": "نجح",
+    "phoneInvalid": "رقم الهاتف غير صحيح",
+    "nameRequired": "الرجاء إدخال الاسم"
+  }
+}
+

@@ -1,7 +1,7 @@
 const { Driver, Order, Settlement, User } = require('../models');
 const { Op } = require('sequelize');
+const { featureFlags } = require('../config/featureFlags');
 
-const COMMISSION_RATE = 1.5; // Per order
 const DEBT_THRESHOLD = 50; // Block driver if debt exceeds this
 
 class SettlementService {
@@ -13,18 +13,21 @@ class SettlementService {
     const driver = await Driver.findByPk(order.driverId);
     if (!driver) return;
 
+    // Get commission amount from feature flags
+    const commissionAmount = featureFlags.commission_amount;
+    
     // Update order commission
-    order.commission = COMMISSION_RATE;
+    order.commissionAmount = commissionAmount;
     await order.save();
 
     // Add to driver's pending settlement
-    driver.pendingSettlement = parseFloat(driver.pendingSettlement) + COMMISSION_RATE;
+    driver.pendingSettlement = parseFloat(driver.pendingSettlement) + commissionAmount;
     await driver.save();
 
     // Check if driver should be blocked
     await this.checkDriverDebt(driver);
 
-    return { commission: COMMISSION_RATE, totalPending: driver.pendingSettlement };
+    return { commission: commissionAmount, totalPending: driver.pendingSettlement };
   }
 
   // Check and block driver if debt exceeds threshold

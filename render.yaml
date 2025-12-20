@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: dalla3ni-backend
+    env: node
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: API_URL
+        sync: false
+    healthCheckPath: /health
+
+databases:
+  - name: dalla3ni-db
+    databaseName: dalla3ni
+    user: dalla3ni_user
+    plan: free
+
