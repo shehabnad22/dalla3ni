@@ -49,9 +49,15 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(sanitizeInput);
 
 // Rate Limiting
-// Admin login gets higher limit - apply BEFORE general auth limiter
-app.use('/api/auth/admin/login', standardRateLimiter); // Higher limit for admin (100 requests per 15 min)
-app.use('/api/auth', authRateLimiter); // Other auth endpoints (20 requests per 15 min)
+// Skip rate limiting for admin login to avoid blocking
+app.use('/api/auth', (req, res, next) => {
+  // Skip rate limiting for admin login endpoint
+  if (req.path === '/admin/login' || req.originalUrl.includes('/admin/login')) {
+    return next();
+  }
+  // Apply rate limiting for other auth endpoints
+  return authRateLimiter(req, res, next);
+});
 app.use('/api', standardRateLimiter); // General API endpoints
 
 // Swagger Configuration

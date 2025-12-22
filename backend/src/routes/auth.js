@@ -284,15 +284,15 @@ router.post('/admin/login', async (req, res) => {
     const ADMIN_PASSWORD = 'Ss123456789';
 
     // Trim and normalize input
-    const normalizedEmail = email?.trim();
+    const normalizedEmail = email?.trim()?.toLowerCase();
     const normalizedPassword = password?.trim();
 
     if (!normalizedEmail || !normalizedPassword) {
       return res.status(400).json({ success: false, message: 'البريد الإلكتروني وكلمة المرور مطلوبان' });
     }
 
-    // Check credentials first
-    if (normalizedEmail !== ADMIN_EMAIL || normalizedPassword !== ADMIN_PASSWORD) {
+    // Check credentials first (case-insensitive email)
+    if (normalizedEmail !== ADMIN_EMAIL.toLowerCase() || normalizedPassword !== ADMIN_PASSWORD) {
       return res.status(401).json({ success: false, message: 'بيانات الدخول غير صحيحة' });
     }
 
@@ -301,41 +301,34 @@ router.post('/admin/login', async (req, res) => {
     
     if (!user) {
       // إنشاء حساب admin إذا لم يكن موجوداً
-      user = await User.create({
-        name: 'Shehab Admin',
-        email: ADMIN_EMAIL,
-        phone: '+963000000000',
-        password: ADMIN_PASSWORD, // سيتم تشفيره تلقائياً
-        role: 'admin',
-        isActive: true,
-        isVerified: true,
-      });
-    } else {
-      // تحديث حالة المستخدم إذا كان موجوداً
-      if (!user.isActive) {
-        user.isActive = true;
-        await user.save();
-      }
-      if (!user.isVerified) {
-        user.isVerified = true;
-        await user.save();
-      }
-      
-      // التحقق من كلمة المرور (في حالة كانت مشفرة مسبقاً)
       try {
-        const isValid = await user.comparePassword(normalizedPassword);
-        if (!isValid) {
-          // إذا كانت كلمة المرور المشفرة مختلفة، قم بتحديثها
-          user.password = ADMIN_PASSWORD; // سيتم تشفيرها تلقائياً
-          await user.save();
+        user = await User.create({
+          name: 'Shehab Admin',
+          email: ADMIN_EMAIL,
+          phone: '+963000000000',
+          password: ADMIN_PASSWORD, // سيتم تشفيره تلقائياً
+          role: 'admin',
+          isActive: true,
+          isVerified: true,
+        });
+      } catch (createError) {
+        console.error('Error creating admin user:', createError);
+        // Try to find again in case of race condition
+        user = await User.findOne({ where: { email: ADMIN_EMAIL, role: 'admin' } });
+        if (!user) {
+          throw createError;
         }
-      } catch (compareError) {
-        // إذا فشلت المقارنة، قم بتحديث كلمة المرور
-        user.password = ADMIN_PASSWORD;
-        await user.save();
       }
     }
 
+    // Ensure user is active and verified
+    if (!user.isActive || !user.isVerified) {
+      user.isActive = true;
+      user.isVerified = true;
+      await user.save();
+    }
+
+    // Generate tokens
     const accessToken = generateAccessToken(user);
     const refreshToken = generateRefreshToken(user);
 
@@ -353,7 +346,11 @@ router.post('/admin/login', async (req, res) => {
     });
   } catch (error) {
     console.error('Admin login error:', error);
-    res.status(500).json({ success: false, error: error.message });
+    res.status(500).json({ 
+      success: false, 
+      message: 'حدث خطأ أثناء تسجيل الدخول',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
 
