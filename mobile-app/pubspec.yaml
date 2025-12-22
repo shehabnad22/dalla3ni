@@ -33,12 +33,12 @@ dev_dependencies:
 
 flutter_native_splash:
   color: "#FF6B35"
-  # image: assets/splash_screen.png  # Uncomment after adding the image
+  image: assets/splash_screen.png
   android: true
   ios: true
   android_12:
     color: "#FF6B35"
-    # image: assets/splash_screen.png  # Uncomment after adding the image
+    image: assets/splash_screen.png
   fullscreen: true
   android_gravity: center
   ios_content_mode: center
