@@ -38,9 +38,17 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // Obfuscate code for security
+            isDebuggable = false
             // Signing with the debug keys for now, so `flutter run --release` works.
             // TODO: Add your own signing config for production builds
             signingConfig = signingConfigs.getByName("debug")
+        }
+        debug {
+            // Disable obfuscation in debug builds
+            isMinifyEnabled = false
+            isShrinkResources = false
+            isDebuggable = true
         }
     }
 }

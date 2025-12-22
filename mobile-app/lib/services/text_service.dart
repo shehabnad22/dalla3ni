@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 
 class TextService {
   static Map<String, dynamic>? _texts;
@@ -13,7 +14,9 @@ class TextService {
       _texts = json.decode(jsonString) as Map<String, dynamic>;
       _isLoaded = true;
     } catch (e) {
-      print('Error loading texts.json: $e');
+      if (kDebugMode) {
+        debugPrint('Error loading texts.json: $e');
+      }
       _texts = {}; // Fallback to empty map
       _isLoaded = true;
     }

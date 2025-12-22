@@ -1,5 +1,6 @@
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -469,7 +470,9 @@ class _CustomerRegisterScreenState extends State<CustomerRegisterScreen> {
         }
       } catch (apiError) {
         // If API fails, still save locally (offline mode)
-        print('API Error: $apiError');
+        if (kDebugMode) {
+          debugPrint('API Error: $apiError');
+        }
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('customer_name', name);
         await prefs.setString('customer_phone', fullPhone);
@@ -1257,7 +1260,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
         });
       }
     } catch (e) {
-      print('Error fetching orders: $e');
+      if (kDebugMode) {
+        debugPrint('Error fetching orders: $e');
+      }
       setState(() {
         _orders = [];
         _isLoadingOrders = false;
@@ -1969,7 +1974,9 @@ class _WriteOrderScreenState extends State<WriteOrderScreen> {
           final prefs = await SharedPreferences.getInstance();
           await prefs.setString('last_order_id', orderId);
         } else {
-          print('Order creation failed: ${response.statusCode} - ${response.body}');
+          if (kDebugMode) {
+            debugPrint('Order creation failed: ${response.statusCode}');
+          }
         }
         
         // Navigate to matching screen

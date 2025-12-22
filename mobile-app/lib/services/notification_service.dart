@@ -55,12 +55,16 @@ class NotificationService {
     */
 
     _initialized = true;
-    debugPrint('NotificationService initialized');
+    if (kDebugMode) {
+      debugPrint('NotificationService initialized');
+    }
   }
 
   /// Handle foreground message
   void _handleForegroundMessage(dynamic message) {
-    debugPrint('Foreground message: ${message.data}');
+    if (kDebugMode) {
+      debugPrint('Foreground message: ${message.data}');
+    }
     
     // Show local notification or dialog
     final data = message.data;
@@ -72,7 +76,9 @@ class NotificationService {
 
   /// Handle notification tap
   void _handleNotificationTap(dynamic message) {
-    debugPrint('Notification tapped: ${message.data}');
+    if (kDebugMode) {
+      debugPrint('Notification tapped: ${message.data}');
+    }
     
     final data = message.data;
     if (data['type'] == 'new_order') {
@@ -84,26 +90,34 @@ class NotificationService {
   void _showIncomingOrderNotification(Map<String, dynamic> data) {
     // TODO: Show local notification with sound
     // Use flutter_local_notifications package
-    debugPrint('New order notification: $data');
+    if (kDebugMode) {
+      debugPrint('New order notification: $data');
+    }
   }
 
   /// Subscribe to driver topic for targeted notifications
   Future<void> subscribeToDriverTopic(String driverId) async {
     // TODO: FirebaseMessaging.instance.subscribeToTopic('driver_$driverId');
-    debugPrint('Subscribed to driver topic: $driverId');
+    if (kDebugMode) {
+      debugPrint('Subscribed to driver topic: $driverId');
+    }
   }
 
   /// Unsubscribe from driver topic
   Future<void> unsubscribeFromDriverTopic(String driverId) async {
     // TODO: FirebaseMessaging.instance.unsubscribeFromTopic('driver_$driverId');
-    debugPrint('Unsubscribed from driver topic: $driverId');
+    if (kDebugMode) {
+      debugPrint('Unsubscribed from driver topic: $driverId');
+    }
   }
 }
 
 /// Background message handler (must be top-level function)
 @pragma('vm:entry-point')
 Future<void> _handleBackgroundMessage(dynamic message) async {
-  debugPrint('Background message: ${message.data}');
+  if (kDebugMode) {
+    debugPrint('Background message: ${message.data}');
+  }
   
   // Handle background notification
   // This runs even when app is closed
