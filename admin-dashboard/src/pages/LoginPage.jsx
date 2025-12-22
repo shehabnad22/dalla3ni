@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { login } from '../auth/auth';
 import './LoginPage.css';
 
-export default function LoginPage({ onLoginSuccess }) {
+export default function LoginPage({ onLoginSuccess = null }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -44,7 +44,7 @@ export default function LoginPage({ onLoginSuccess }) {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="shehab.nad22@gmail.com"
+              placeholder=""
               required
               disabled={loading}
             />
@@ -56,7 +56,7 @@ export default function LoginPage({ onLoginSuccess }) {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
+              placeholder=""
               required
               disabled={loading}
             />
