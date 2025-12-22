@@ -1,5 +1,6 @@
-package com.example.dalla3ni
+package com.dalla3ni.app
 
 import io.flutter.embedding.android.FlutterActivity
 
 class MainActivity : FlutterActivity()
+

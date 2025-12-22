@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 
 class AppColors {
-  // Primary Colors
-  static const Color primary = Color(0xFFEB7624);
-  static const Color secondary = Color(0xFFEF8E37);
-  static const Color accent = Color(0xFFF1A95F);
+  // Primary Colors - Orange theme matching splash screen
+  static const Color primary = Color(0xFFFF6B35); // Vibrant orange from splash
+  static const Color secondary = Color(0xFFFF8C42); // Lighter orange
+  static const Color accent = Color(0xFFFFA366); // Light orange accent
   
   // Background Colors
   static const Color backgroundLight = Color(0xFFFEFDFB);

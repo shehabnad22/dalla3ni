@@ -53,9 +53,18 @@ class Dalla3niApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(
           seedColor: AppColors.primary,
           brightness: Brightness.light,
+          primary: AppColors.primary,
+          secondary: AppColors.secondary,
         ),
         useMaterial3: true,
         fontFamily: 'Cairo',
+        appBarTheme: const AppBarTheme(
+          backgroundColor: AppColors.primary,
+          foregroundColor: Colors.white,
+          elevation: 0,
+        ),
+        primaryColor: AppColors.primary,
+        scaffoldBackgroundColor: AppColors.backgroundLight,
       ),
       builder: (context, child) {
         return Directionality(
