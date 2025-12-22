@@ -46,7 +46,8 @@ export default function LoginPage({ onLoginSuccess = null }) {
               onChange={(e) => setEmail(e.target.value)}
               required
               disabled={loading}
-              autoComplete="email"
+              autoComplete="off"
+              placeholder=""
             />
           </div>
 
@@ -58,7 +59,8 @@ export default function LoginPage({ onLoginSuccess = null }) {
               onChange={(e) => setPassword(e.target.value)}
               required
               disabled={loading}
-              autoComplete="current-password"
+              autoComplete="off"
+              placeholder=""
             />
           </div>
 
