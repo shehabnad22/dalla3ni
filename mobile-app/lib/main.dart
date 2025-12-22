@@ -942,7 +942,9 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
         }
       } catch (apiError) {
         // If API fails, still save locally
-        print('API Error: $apiError');
+        if (kDebugMode) {
+          debugPrint('API Error: $apiError');
+        }
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('driver_name', name);
         await prefs.setString('driver_phone', fullPhone);

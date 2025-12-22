@@ -195,8 +195,20 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
       return;
     }
     
-    // Add +963 prefix
-    final fullPhone = phone.startsWith('+963') ? phone : '+963$phone';
+    // Normalize phone number - remove any spaces, dashes, or other characters
+    String normalizedPhone = phone.replaceAll(RegExp(r'[\s\-\(\)]'), '');
+    
+    // Add +963 prefix if not present
+    String fullPhone;
+    if (normalizedPhone.startsWith('+963')) {
+      fullPhone = normalizedPhone;
+    } else if (normalizedPhone.startsWith('963')) {
+      fullPhone = '+$normalizedPhone';
+    } else if (normalizedPhone.startsWith('0')) {
+      fullPhone = '+963${normalizedPhone.substring(1)}';
+    } else {
+      fullPhone = '+963$normalizedPhone';
+    }
     
     setState(() => _isLoading = true);
     
@@ -209,10 +221,10 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
       
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        if (data['success'] == true && data['status'] != null) {
-          driverStatus = data['status'].toString();
-        } else if (data['driver'] != null && data['driver']['accountStatus'] != null) {
-          driverStatus = data['driver']['accountStatus'].toString();
+        if (data['success'] == true) {
+          driverStatus = data['status']?.toString() ?? 
+                        data['accountStatus']?.toString() ?? 
+                        'PENDING_REVIEW';
         }
       } else if (response.statusCode == 404) {
         // Driver not found - show registration option
@@ -225,6 +237,19 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
             const SnackBar(
               content: Text('لا يوجد حساب بهذا الرقم. يرجى التسجيل أولاً'),
               backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      } else {
+        // Other error
+        if (mounted) {
+          setState(() => _isLoading = false);
+          final errorData = json.decode(response.body);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(errorData['message'] ?? 'حدث خطأ في الاتصال'),
+              backgroundColor: Colors.red,
             ),
           );
         }
