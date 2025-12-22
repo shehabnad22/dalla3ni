@@ -106,13 +106,12 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
         ),
         child: FadeTransition(
           opacity: _fadeAnimation,
-          child: Center(
-            child: Image.asset(
-              'assets/splash_screen.png',
-              width: double.infinity,
-              height: double.infinity,
-              fit: BoxFit.contain,
-              alignment: Alignment.center,
+          child: Image.asset(
+            'assets/splash_screen.png',
+            width: double.infinity,
+            height: double.infinity,
+            fit: BoxFit.contain,
+            alignment: Alignment.center,
             errorBuilder: (context, error, stackTrace) {
               // Fallback if image not found - show app name and icon with orange background
               return Container(
