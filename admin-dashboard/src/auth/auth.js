@@ -22,17 +22,29 @@ export const isAuthenticated = () => {
 // Login function
 export const login = async (email, password) => {
   try {
+    // Validate input
+    if (!email || !password) {
+      return { success: false, message: 'الرجاء إدخال البريد الإلكتروني وكلمة المرور' };
+    }
+
     const loginUrl = `${API_URL}/auth/admin/login`;
-    
-    console.log('Login attempt to:', loginUrl);
     
     const response = await fetch(loginUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email: email.trim(), password: password.trim() }),
     });
+
+    // Handle rate limiting
+    if (response.status === 429) {
+      const errorData = await response.json().catch(() => ({}));
+      return { 
+        success: false, 
+        message: errorData.message || 'تم تجاوز الحد المسموح من المحاولات. يرجى الانتظار قليلاً والمحاولة مرة أخرى.' 
+      };
+    }
 
     if (!response.ok) {
       // If response is not ok, try to get error message

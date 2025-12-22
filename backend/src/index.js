@@ -49,6 +49,8 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(sanitizeInput);
 
 // Rate Limiting
+// Admin login gets higher limit, apply standard limiter to other auth endpoints
+app.use('/api/auth/admin/login', standardRateLimiter); // Higher limit for admin
 app.use('/api/auth', authRateLimiter);
 app.use('/api', standardRateLimiter);
 

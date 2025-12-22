@@ -42,8 +42,8 @@ const rateLimiter = (windowMs = 15 * 60 * 1000, maxRequests = 100) => {
   };
 };
 
-// Stricter rate limiter for auth endpoints
-const authRateLimiter = rateLimiter(15 * 60 * 1000, 5); // 5 requests per 15 minutes
+// Stricter rate limiter for auth endpoints (increased for admin login)
+const authRateLimiter = rateLimiter(15 * 60 * 1000, 20); // 20 requests per 15 minutes
 
 // Standard rate limiter
 const standardRateLimiter = rateLimiter(15 * 60 * 1000, 100); // 100 requests per 15 minutes
