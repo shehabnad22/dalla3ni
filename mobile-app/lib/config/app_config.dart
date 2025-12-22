@@ -7,16 +7,9 @@ class AppConfig {
   // In production builds, this should be set via --dart-define or environment
   static String get baseUrl {
     // Check for production API URL first (set via --dart-define=API_BASE_URL=...)
-    const String? prodUrl = String.fromEnvironment('API_BASE_URL', defaultValue: null);
-    if (prodUrl != null && prodUrl.isNotEmpty) {
+    const String prodUrl = String.fromEnvironment('API_BASE_URL', defaultValue: '');
+    if (prodUrl.isNotEmpty) {
       return prodUrl;
-    }
-    
-    // Check for environment variable (for CI/CD or build scripts)
-    // This can be set via: export API_BASE_URL=https://api.dalla3ni.com
-    const String? envUrl = const String.fromEnvironment('API_BASE_URL');
-    if (envUrl != null && envUrl.isNotEmpty) {
-      return envUrl;
     }
     
     // Production default - Use Render backend URL
