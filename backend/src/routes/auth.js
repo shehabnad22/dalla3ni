@@ -283,12 +283,21 @@ router.post('/admin/login', async (req, res) => {
     const ADMIN_EMAIL = 'shehab.nad22@gmail.com';
     const ADMIN_PASSWORD = 'Ss123456789';
 
-    if (email !== ADMIN_EMAIL || password !== ADMIN_PASSWORD) {
-      return res.status(401).json({ success: false, message: 'غير مصرح لك بالدخول' });
+    // Trim and normalize input
+    const normalizedEmail = email?.trim();
+    const normalizedPassword = password?.trim();
+
+    if (!normalizedEmail || !normalizedPassword) {
+      return res.status(400).json({ success: false, message: 'البريد الإلكتروني وكلمة المرور مطلوبان' });
+    }
+
+    // Check credentials first
+    if (normalizedEmail !== ADMIN_EMAIL || normalizedPassword !== ADMIN_PASSWORD) {
+      return res.status(401).json({ success: false, message: 'بيانات الدخول غير صحيحة' });
     }
 
     // البحث عن المستخدم أو إنشاؤه
-    let user = await User.findOne({ where: { email, role: 'admin' } });
+    let user = await User.findOne({ where: { email: ADMIN_EMAIL, role: 'admin' } });
     
     if (!user) {
       // إنشاء حساب admin إذا لم يكن موجوداً
@@ -302,10 +311,28 @@ router.post('/admin/login', async (req, res) => {
         isVerified: true,
       });
     } else {
-      // التحقق من كلمة المرور
-      const isValid = await user.comparePassword(password);
-      if (!isValid) {
-        return res.status(401).json({ success: false, message: 'بيانات الدخول غير صحيحة' });
+      // تحديث حالة المستخدم إذا كان موجوداً
+      if (!user.isActive) {
+        user.isActive = true;
+        await user.save();
+      }
+      if (!user.isVerified) {
+        user.isVerified = true;
+        await user.save();
+      }
+      
+      // التحقق من كلمة المرور (في حالة كانت مشفرة مسبقاً)
+      try {
+        const isValid = await user.comparePassword(normalizedPassword);
+        if (!isValid) {
+          // إذا كانت كلمة المرور المشفرة مختلفة، قم بتحديثها
+          user.password = ADMIN_PASSWORD; // سيتم تشفيرها تلقائياً
+          await user.save();
+        }
+      } catch (compareError) {
+        // إذا فشلت المقارنة، قم بتحديث كلمة المرور
+        user.password = ADMIN_PASSWORD;
+        await user.save();
       }
     }
 
@@ -325,6 +352,7 @@ router.post('/admin/login', async (req, res) => {
       },
     });
   } catch (error) {
+    console.error('Admin login error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
