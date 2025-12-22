@@ -19,18 +19,20 @@ class AppConfig {
       return envUrl;
     }
     
+    // Production default - Use Render backend URL
+    // This is the LIVE backend URL
+    const bool isProduction = bool.fromEnvironment('PRODUCTION', defaultValue: false);
+    if (isProduction) {
+      // Production: Use Render backend
+      return 'https://dalla3ni-backend-v2-2.onrender.com';
+    }
+    
     // Development defaults
     // For Android emulator: 10.0.2.2
     // For iOS simulator: localhost
     // For real device: use your computer's IP (e.g., 192.168.1.20)
-    const bool isProduction = bool.fromEnvironment('PRODUCTION', defaultValue: false);
-    if (isProduction) {
-      // Production default (should be overridden via --dart-define)
-      return 'https://api.dalla3ni.com';
-    }
-    
-    // Development default (Android emulator)
-    return 'http://10.0.2.2:3000';
+    // Or use production URL for testing: https://dalla3ni-backend-v2-2.onrender.com
+    return 'https://dalla3ni-backend-v2-2.onrender.com'; // Using production URL by default
   }
   
   // API Endpoints
