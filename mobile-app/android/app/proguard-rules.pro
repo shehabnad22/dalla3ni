@@ -20,6 +20,14 @@
 # Obfuscate package names
 -keepnames class com.dalla3ni.app.**
 
+# Google Play Core (for deferred components - optional feature)
+-dontwarn com.google.android.play.core.**
+-keep class com.google.android.play.core.** { *; }
+
+# Flutter deferred components
+-keep class io.flutter.embedding.engine.deferredcomponents.** { *; }
+-dontwarn io.flutter.embedding.engine.deferredcomponents.**
+
 # Remove logging in release builds
 -assumenosideeffects class android.util.Log {
     public static *** d(...);

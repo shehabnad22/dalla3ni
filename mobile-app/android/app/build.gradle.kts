@@ -21,7 +21,7 @@ android {
 
     defaultConfig {
         applicationId = "com.dalla3ni.app"
-        minSdk = 21 // Android 5.0+
+        minSdk = flutter.minSdkVersion // Android 5.0+
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
