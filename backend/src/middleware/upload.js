@@ -30,14 +30,17 @@ const upload = multer({
     storage: storage,
     limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
     fileFilter: (req, file, cb) => {
-        const filetypes = /jpeg|jpg|png|heic|webp/;
-        const mimetype = filetypes.test(file.mimetype);
-        const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
+        // Relaxed validation: Accept any image mime type OR valid extension
+        const isImageMime = file.mimetype.startsWith('image/');
+        const ext = path.extname(file.originalname).toLowerCase();
+        const allowedExts = ['.jpg', '.jpeg', '.png', '.heic', '.webp'];
 
-        if (mimetype && extname) {
+        // Check if allow
+        if (isImageMime || allowedExts.includes(ext)) {
             return cb(null, true);
         }
-        cb(new Error("Error: File upload only supports the following filetypes - " + filetypes));
+
+        cb(new Error(`Error: File upload only supports images. Got mime: ${file.mimetype}, ext: ${ext}`));
     }
 });
 

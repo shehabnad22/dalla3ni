@@ -1,5 +1,6 @@
 # Dependencies
 node_modules/
+<<<<<<< HEAD
 .pnp/
 .pnp.js
 
@@ -11,11 +12,27 @@ dist/
 *.ipa
 
 # Environment
+=======
+
+# Environment variables
+>>>>>>> dac1512775b296fadc401e5f0690c2934a920d56
 .env
 .env.local
 .env.*.local
 *.env
 
+<<<<<<< HEAD
+=======
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Build
+build/
+dist/
+
+>>>>>>> dac1512775b296fadc401e5f0690c2934a920d56
 # IDE
 .idea/
 .vscode/
@@ -23,6 +40,7 @@ dist/
 *.swo
 .DS_Store
 
+<<<<<<< HEAD
 # Flutter
 .dart_tool/
 .flutter-plugins
@@ -61,4 +79,8 @@ coverage/
 *.tmp
 *.temp
 Thumbs.db
+=======
+# Database backups
+backups/
+>>>>>>> dac1512775b296fadc401e5f0690c2934a920d56
 
