@@ -5,25 +5,43 @@ const { User } = require('../models');
 const authenticate = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
-    
+
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ 
-        success: false, 
-        message: 'مطلوب token للمصادقة' 
+      return res.status(401).json({
+        success: false,
+        message: 'مطلوب token للمصادقة'
       });
     }
 
     const token = authHeader.substring(7);
-    
+
     try {
       const decoded = jwt.verify(token, process.env.JWT_SECRET || 'dalla3ni-secret');
-      
+
       // Get user from database
       const user = await User.findByPk(decoded.userId);
-      if (!user || !user.isActive) {
-        return res.status(401).json({ 
-          success: false, 
-          message: 'المستخدم غير موجود أو غير نشط' 
+      if (!user) {
+        return res.status(401).json({
+          success: false,
+          message: 'المستخدم غير موجود'
+        });
+      }
+
+      // Check global blocking
+      if (user.isBlocked) {
+        return res.status(403).json({
+          success: false,
+          message: 'لقد خالفت معايير الاستخدام وتم حظرك',
+          isBlocked: true,
+          blockReason: user.blockReason || 'تم الحظر من قبل الإدارة'
+        });
+      }
+
+      // Check if user is active
+      if (!user.isActive) {
+        return res.status(403).json({
+          success: false,
+          message: 'حسابك غير نشط. يرجى التواصل مع الدعم'
         });
       }
 
@@ -33,15 +51,15 @@ const authenticate = async (req, res, next) => {
       next();
     } catch (error) {
       if (error.name === 'TokenExpiredError') {
-        return res.status(401).json({ 
-          success: false, 
+        return res.status(401).json({
+          success: false,
           message: 'انتهت صلاحية الـ token',
           code: 'TOKEN_EXPIRED'
         });
       }
-      return res.status(401).json({ 
-        success: false, 
-        message: 'Token غير صحيح' 
+      return res.status(401).json({
+        success: false,
+        message: 'Token غير صحيح'
       });
     }
   } catch (error) {
@@ -52,9 +70,9 @@ const authenticate = async (req, res, next) => {
 // Admin Only Middleware
 const requireAdmin = (req, res, next) => {
   if (req.userRole !== 'admin') {
-    return res.status(403).json({ 
-      success: false, 
-      message: 'هذا الإجراء يتطلب صلاحيات مدير' 
+    return res.status(403).json({
+      success: false,
+      message: 'هذا الإجراء يتطلب صلاحيات مدير'
     });
   }
   next();

@@ -15,7 +15,7 @@ class SettlementService {
 
     // Get commission amount from feature flags
     const commissionAmount = featureFlags.commission_amount;
-    
+
     // Update order commission
     order.commissionAmount = commissionAmount;
     await order.save();
@@ -34,7 +34,7 @@ class SettlementService {
   async checkDriverDebt(driver) {
     if (parseFloat(driver.pendingSettlement) >= DEBT_THRESHOLD && !driver.isBlocked) {
       driver.isBlocked = true;
-      driver.blockReason = `ديون متراكمة: ${driver.pendingSettlement} دينار`;
+      driver.blockReason = `ديون متراكمة: ${driver.pendingSettlement} ل.س`;
       driver.isAvailable = false;
       await driver.save();
       return true;
@@ -95,13 +95,13 @@ class SettlementService {
 
     // Reset driver's pending settlement
     driver.pendingSettlement = parseFloat(driver.pendingSettlement) - settledAmount;
-    
+
     // Unblock if debt cleared
     if (driver.isBlocked && parseFloat(driver.pendingSettlement) < DEBT_THRESHOLD) {
       driver.isBlocked = false;
       driver.blockReason = null;
     }
-    
+
     await driver.save();
 
     return {

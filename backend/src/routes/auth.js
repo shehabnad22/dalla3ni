@@ -2,7 +2,8 @@ const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
 const { User, Driver } = require('../models');
-const { generateAccessToken, generateRefreshToken } = require('../middleware/auth');
+const { generateAccessToken, generateRefreshToken, authenticate } = require('../middleware/auth');
+const { uploadMiddleware } = require('../middleware/upload');
 
 // Store OTPs temporarily (in production, use Redis)
 const otpStore = new Map();
@@ -15,13 +16,13 @@ const sendWhatsAppOtp = async (phone, otp) => {
   // TODO: Integrate with WhatsApp Business API
   // For now, log the OTP
   console.log(`📱 WhatsApp OTP to ${phone}: ${otp}`);
-  
+
   // In production, use:
   // - WhatsApp Business API
   // - Twilio WhatsApp
   // - MessageBird
   // - etc.
-  
+
   return true;
 };
 
@@ -44,11 +45,10 @@ router.post('/customer/request-otp', async (req, res) => {
     // Send via WhatsApp
     await sendWhatsAppOtp(phone, otp);
 
-    res.json({ 
-      success: true, 
+    res.json({
+      success: true,
       message: 'تم إرسال رمز التحقق عبر واتساب',
-      // Remove in production:
-      debug_otp: process.env.NODE_ENV === 'development' ? otp : undefined,
+      debug_otp: otp, // Always return for MVP auto-verification
     });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -61,7 +61,7 @@ router.post('/customer/verify-otp', async (req, res) => {
     const { phone, otp } = req.body;
 
     const stored = otpStore.get(phone);
-    
+
     if (!stored) {
       return res.status(400).json({ success: false, message: 'لم يتم طلب رمز تحقق لهذا الرقم' });
     }
@@ -89,6 +89,16 @@ router.post('/customer/verify-otp', async (req, res) => {
         isActive: true,
       });
     } else {
+      // Check if user is blocked
+      if (user.isBlocked) {
+        return res.status(403).json({
+          success: false,
+          message: 'لقد خالفت معايير الاستخدام وتم حظرك',
+          isBlocked: true,
+          blockReason: user.blockReason || 'تم الحظر من قبل الإدارة'
+        });
+      }
+
       // Update name if changed
       if (user.name !== stored.name) {
         user.name = stored.name;
@@ -121,13 +131,14 @@ router.post('/customer/verify-otp', async (req, res) => {
 });
 
 // Register Driver (PENDING_REVIEW)
-router.post('/driver/register', async (req, res) => {
+router.post('/driver/register', uploadMiddleware([
+  { name: 'idPhoto', maxCount: 1 },
+  { name: 'bikePhoto', maxCount: 1 }
+]), async (req, res) => {
   try {
     const {
       fullName,
       phone,
-      idPhoto,
-      bikePhoto,
       plateNumber,
       bikeModel,
       areaTags,
@@ -135,22 +146,60 @@ router.post('/driver/register', async (req, res) => {
       availabilityEnd,
     } = req.body;
 
+    const idPhotoFile = req.files['idPhoto'] ? req.files['idPhoto'][0] : null;
+    const bikePhotoFile = req.files['bikePhoto'] ? req.files['bikePhoto'][0] : null;
+
     // Validation - Make plateNumber optional for MVP
-    if (!fullName || !phone || !idPhoto || !bikePhoto || !areaTags?.length) {
+    if (!fullName || !phone || !idPhotoFile || !bikePhotoFile || !areaTags) {
       return res.status(400).json({ success: false, message: 'جميع الحقول المطلوبة يجب ملؤها' });
     }
 
-    // Check if phone already exists
-    const existingUser = await User.findOne({ where: { phone } });
+    let parsedAreaTags = areaTags;
+    if (typeof areaTags === 'string') {
+      try {
+        parsedAreaTags = JSON.parse(areaTags);
+      } catch (e) {
+        parsedAreaTags = areaTags.split(',').map(s => s.trim());
+      }
+    }
+
+    // Normalize phone number (remove whitespace, leading 0 if present in +963 format)
+    const cleanPhone = phone.toString().trim().replace(/\s+/g, '');
+    let finalPhone = cleanPhone;
+
+    // Ensure strict +963 format
+    if (finalPhone.startsWith('09')) {
+      finalPhone = '+963' + finalPhone.substring(1);
+    } else if (finalPhone.startsWith('9')) {
+      finalPhone = '+963' + finalPhone;
+    } else if (finalPhone.startsWith('+9630')) {
+      // Fix double prefix/zero issue if frontend sends +9630...
+      finalPhone = '+963' + finalPhone.substring(5); // +96309... -> +9639...
+    } else if (finalPhone.startsWith('00963')) {
+      finalPhone = '+' + finalPhone.substring(2);
+    }
+
+    // Check if phone or email already exists
+    const existingUser = await User.findOne({
+      where: {
+        [require('sequelize').Op.or]: [
+          { phone: finalPhone },
+          { email: `driver_${finalPhone}@dalla3ni.app` }
+        ]
+      }
+    });
+
     if (existingUser) {
+      // If user exists but has no driver profile, we could allow them to continue...
+      // But for now, just return error to be safe/simple
       return res.status(400).json({ success: false, message: 'رقم الهاتف مسجل مسبقاً' });
     }
 
     // Create user with driver role
     const user = await User.create({
       name: fullName,
-      phone,
-      email: `driver_${phone}@dalla3ni.app`,
+      phone: finalPhone,
+      email: `driver_${finalPhone}@dalla3ni.app`,
       password: Math.random().toString(36),
       role: 'driver',
       isVerified: false, // Will be verified after admin approval
@@ -159,11 +208,11 @@ router.post('/driver/register', async (req, res) => {
     // Create driver profile with PENDING_REVIEW status
     const driver = await Driver.create({
       userId: user.id,
-      idImage: idPhoto,
-      motorImage: bikePhoto,
+      idImage: `uploads/drivers/${idPhotoFile.filename}`,
+      motorImage: `uploads/drivers/${bikePhotoFile.filename}`,
       plateNumber: plateNumber || 'N/A',
       bikeModel: bikeModel || null,
-      workingAreas: areaTags,
+      workingAreas: parsedAreaTags,
       workStartTime: availabilityStart,
       workEndTime: availabilityEnd,
       isApproved: false, // PENDING_REVIEW
@@ -178,6 +227,32 @@ router.post('/driver/register', async (req, res) => {
       driverId: driver.id,
     });
   } catch (error) {
+    if (error.name === 'SequelizeUniqueConstraintError') {
+      return res.status(400).json({ success: false, message: 'رقم الهاتف أو البريد الإلكتروني مسجل مسبقاً' });
+    }
+    console.error('Driver Register Error:', error);
+    res.status(500).json({ success: false, error: 'حدث خطأ في الخادم أثناء التسجيل: ' + error.message });
+  }
+});
+
+// Get Current User (Global Auth Check)
+router.get('/me', authenticate, async (req, res) => {
+  try {
+    // User is already attached by middleware and checked for blocking
+    const user = req.user;
+
+    res.json({
+      success: true,
+      user: {
+        id: user.id,
+        name: user.name,
+        phone: user.phone,
+        email: user.email,
+        role: user.role,
+      },
+      isBlocked: false // Middleware guarantees this
+    });
+  } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -185,13 +260,33 @@ router.post('/driver/register', async (req, res) => {
 // Check Driver Application Status
 router.get('/driver/status/:phone', async (req, res) => {
   try {
-    const user = await User.findOne({ 
+    const user = await User.findOne({
       where: { phone: req.params.phone, role: 'driver' },
       include: [{ model: Driver }],
     });
 
     if (!user) {
       return res.status(404).json({ success: false, message: 'لم يتم العثور على طلب تسجيل' });
+    }
+
+    // Check if user is blocked
+    if (user.isBlocked) {
+      return res.status(403).json({
+        success: false,
+        message: 'لقد خالفت معايير الاستخدام وتم حظرك',
+        isBlocked: true,
+        blockReason: user.blockReason || 'تم الحظر من قبل الإدارة'
+      });
+    }
+
+    // Check if driver is blocked
+    if (user.Driver?.isBlocked) {
+      return res.status(403).json({
+        success: false,
+        message: 'لقد خالفت معايير الاستخدام وتم حظرك',
+        isBlocked: true,
+        blockReason: user.Driver.blockReason || 'تم الحظر من قبل الإدارة'
+      });
     }
 
     const status = user.Driver?.accountStatus || 'PENDING_REVIEW';
@@ -201,9 +296,127 @@ router.get('/driver/status/:phone', async (req, res) => {
       status,
       isApproved: user.Driver?.isApproved || false,
       accountStatus: status,
+      driverId: user.Driver?.id,
+      isBlocked: false,
     });
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    console.error('Driver status check error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'حدث خطأ أثناء التحقق من حالة السائق',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
+// Driver Login (for approved drivers)
+router.post('/driver/login', async (req, res) => {
+  try {
+    const { phone } = req.body;
+
+    // 1. Input Validation
+    if (!phone) {
+      return res.status(400).json({
+        success: false,
+        message: 'رقم الهاتف مطلوب'
+      });
+    }
+
+    // Normalize phone (remove whitespace)
+    const cleanPhone = phone.toString().trim().replace(/\s+/g, '');
+
+    // 2. Database Query
+    const user = await User.findOne({
+      where: { phone: cleanPhone, role: 'driver' },
+      include: [{ model: Driver }],
+    });
+
+    // 3. Check User Existence
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'لم يتم العثور على حساب بهذا الرقم'
+      });
+    }
+
+    // 4. Check Global Blocking (User Level)
+    if (user.isBlocked) {
+      return res.status(403).json({
+        success: false,
+        message: 'لقد خالفت معايير الاستخدام وتم حظرك',
+        isBlocked: true,
+        blockReason: user.blockReason || 'تم الحظر من قبل الإدارة'
+      });
+    }
+
+    // 5. Check Driver Profile Existence
+    if (!user.Driver) {
+      // Edge case: User exists but Driver profile was deleted or not created
+      return res.status(400).json({
+        success: false,
+        message: 'لم يتم العثور على ملف السائق. يرجى التسجيل أولاً'
+      });
+    }
+
+    // 6. Check Driver Blocking (Driver Level)
+    if (user.Driver.isBlocked) {
+      return res.status(403).json({
+        success: false,
+        message: 'لقد خالفت معايير الاستخدام وتم حظرك',
+        isBlocked: true,
+        blockReason: user.Driver.blockReason || 'تم الحظر من قبل الإدارة'
+      });
+    }
+
+    // 7. Check Approval Status
+    if (!user.Driver.isApproved || user.Driver.accountStatus !== 'APPROVED') {
+      return res.status(403).json({
+        success: false,
+        message: 'حسابك قيد المراجعة. سيتم التواصل معك قريباً',
+        accountStatus: user.Driver.accountStatus || 'PENDING_REVIEW'
+      });
+    }
+
+    // 8. Check Active Status
+    if (!user.isActive) {
+      return res.status(403).json({
+        success: false,
+        message: 'حسابك غير نشط. يرجى التواصل مع الدعم'
+      });
+    }
+
+    // 9. Generate Tokens
+    const accessToken = generateAccessToken(user);
+    const refreshToken = generateRefreshToken(user);
+
+    // 10. Success Response
+    res.json({
+      success: true,
+      message: 'تم تسجيل الدخول بنجاح',
+      accessToken,
+      refreshToken,
+      user: {
+        id: user.id,
+        name: user.name,
+        phone: user.phone,
+        role: user.role,
+      },
+      driver: {
+        id: user.Driver.id,
+        isAvailable: user.Driver.isAvailable,
+        accountStatus: user.Driver.accountStatus,
+      },
+      driverId: user.Driver.id,
+    });
+
+  } catch (error) {
+    console.error('Driver login error:', error);
+    // Return structured error, never 500 crash dump
+    res.status(400).json({
+      success: false,
+      message: 'حدث خطأ أثناء تسجيل الدخول',
+      developer_error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
 
@@ -211,7 +424,7 @@ router.get('/driver/status/:phone', async (req, res) => {
 router.post('/resend-otp', async (req, res) => {
   try {
     const { phone } = req.body;
-    
+
     const stored = otpStore.get(phone);
     if (!stored) {
       return res.status(400).json({ success: false, message: 'لم يتم طلب رمز تحقق لهذا الرقم' });
@@ -226,8 +439,8 @@ router.post('/resend-otp', async (req, res) => {
     // Send via WhatsApp
     await sendWhatsAppOtp(phone, otp);
 
-    res.json({ 
-      success: true, 
+    res.json({
+      success: true,
       message: 'تم إعادة إرسال رمز التحقق',
       debug_otp: process.env.NODE_ENV === 'development' ? otp : undefined,
     });
@@ -236,18 +449,84 @@ router.post('/resend-otp', async (req, res) => {
   }
 });
 
+// Check user ban status (for app startup)
+router.get('/check-ban/:phone', async (req, res) => {
+  try {
+    const { phone } = req.params;
+    const { role } = req.query; // 'customer' or 'driver'
+
+    if (!phone) {
+      return res.status(400).json({
+        success: false,
+        message: 'رقم الهاتف مطلوب'
+      });
+    }
+
+    const user = await User.findOne({
+      where: { phone, role: role || 'customer' },
+      include: role === 'driver' ? [{ model: Driver }] : [],
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'المستخدم غير موجود'
+      });
+    }
+
+    // Check if user is blocked
+    if (user.isBlocked) {
+      return res.json({
+        success: true,
+        isBlocked: true,
+        message: 'لقد خالفت معايير الاستخدام وتم حظرك',
+        blockReason: user.blockReason || 'تم الحظر من قبل الإدارة'
+      });
+    }
+
+    // For drivers, check driver-level block
+    if (role === 'driver' && user.Driver?.isBlocked) {
+      return res.json({
+        success: true,
+        isBlocked: true,
+        message: 'لقد خالفت معايير الاستخدام وتم حظرك',
+        blockReason: user.Driver.blockReason || 'تم الحظر من قبل الإدارة'
+      });
+    }
+
+    // User is not blocked
+    res.json({
+      success: true,
+      isBlocked: false,
+      user: {
+        id: user.id,
+        name: user.name,
+        phone: user.phone,
+        role: user.role,
+      }
+    });
+  } catch (error) {
+    console.error('Ban check error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'حدث خطأ أثناء التحقق من حالة المستخدم',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
 // Refresh Access Token
 router.post('/refresh', async (req, res) => {
   try {
     const { refreshToken } = req.body;
-    
+
     if (!refreshToken) {
       return res.status(400).json({ success: false, message: 'Refresh token مطلوب' });
     }
 
     try {
       const decoded = jwt.verify(
-        refreshToken, 
+        refreshToken,
         process.env.JWT_REFRESH_SECRET || 'dalla3ni-refresh-secret'
       );
 
@@ -298,7 +577,7 @@ router.post('/admin/login', async (req, res) => {
 
     // البحث عن المستخدم أو إنشاؤه
     let user = await User.findOne({ where: { email: ADMIN_EMAIL, role: 'admin' } });
-    
+
     if (!user) {
       // إنشاء حساب admin إذا لم يكن موجوداً
       try {
@@ -346,8 +625,8 @@ router.post('/admin/login', async (req, res) => {
     });
   } catch (error) {
     console.error('Admin login error:', error);
-    res.status(500).json({ 
-      success: false, 
+    res.status(500).json({
+      success: false,
       message: 'حدث خطأ أثناء تسجيل الدخول',
       error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });

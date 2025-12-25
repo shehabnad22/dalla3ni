@@ -45,3 +45,44 @@
 -keepattributes SourceFile,LineNumberTable
 -renamesourcefileattribute SourceFile
 
+# ====================================
+# HTTP and Network Configuration
+# ====================================
+# Keep Dart HTTP and IO classes to prevent SocketException
+-keep class dart.io.** { *; }
+-keep class dart.async.** { *; }
+-keep class dart.core.** { *; }
+-keepclassmembers class dart.io.** {
+    *;
+}
+
+# Keep HTTP client classes
+-keep class io.flutter.plugins.** { *; }
+-dontwarn io.flutter.plugins.**
+
+# Keep native network methods
+-keepclasseswithmembernames class * {
+    native <methods>;
+}
+
+# Prevent obfuscation of network-related classes
+-keepclassmembers class * {
+    @android.webkit.JavascriptInterface <methods>;
+}
+
+# Keep Socket and network classes
+-keep class java.net.** { *; }
+-keep class javax.net.ssl.** { *; }
+-keep class java.security.** { *; }
+
+# Keep OkHttp (if used by Flutter plugins)
+-dontwarn okhttp3.**
+-dontwarn okio.**
+-keep class okhttp3.** { *; }
+-keep interface okhttp3.** { *; }
+
+# Keep exceptions for better error messages
+-keepattributes Exceptions
+-keepattributes Signature
+-keepattributes *Annotation*
+

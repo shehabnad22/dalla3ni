@@ -26,7 +26,7 @@ class DebtCheckService {
         order: [['createdAt', 'DESC']],
       });
 
-      const warningAge = lastWarning 
+      const warningAge = lastWarning
         ? (Date.now() - new Date(lastWarning.createdAt).getTime()) / (1000 * 60 * 60) // hours
         : Infinity;
 
@@ -34,7 +34,7 @@ class DebtCheckService {
         // Block driver after 24 hours of warning
         driver.isBlocked = true;
         driver.isAvailable = false;
-        driver.blockReason = `ديون غير مسددة: ${driver.pendingSettlement} دينار - تم الحظر بعد 24 ساعة من الإنذار`;
+        driver.blockReason = `ديون غير مسددة: ${driver.pendingSettlement} ل.س - تم الحظر بعد 24 ساعة من الإنذار`;
         await driver.save();
 
         await AuditLog.create({
@@ -92,12 +92,12 @@ class DebtCheckService {
   async sendDebtWarningNotification(driver) {
     // TODO: Implement actual push notification (Firebase/OneSignal)
     console.log(`⚠️ Debt warning sent to driver ${driver.id}:`);
-    console.log(`   "لديك مستحقات غير مسددة بقيمة ${driver.pendingSettlement} دينار. تم إيقاف حسابك مؤقتاً."`);
+    console.log(`   "لديك مستحقات غير مسددة بقيمة ${driver.pendingSettlement} ل.س. تم إيقاف حسابك مؤقتاً."`);
 
     return {
       driverId: driver.id,
       title: '⚠️ تنبيه: مستحقات غير مسددة',
-      body: `لديك مستحقات بقيمة ${driver.pendingSettlement} دينار. تم إيقاف استقبال الطلبات. يرجى التواصل مع الإدارة للتسوية.`,
+      body: `لديك مستحقات بقيمة ${driver.pendingSettlement} ل.س. تم إيقاف استقبال الطلبات. يرجى التواصل مع الإدارة للتسوية.`,
       data: {
         type: 'debt_warning',
         amount: driver.pendingSettlement,

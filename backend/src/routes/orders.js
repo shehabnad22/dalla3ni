@@ -47,23 +47,34 @@ const { validateOrder, validateDriverAccept, validatePickup, validateDeliver, va
  */
 router.post('/', validateOrder, handleValidationErrors, async (req, res) => {
   try {
-    const { 
-      customerId, 
-      itemsText, 
-      estimatedPrice, 
-      deliveryAddress, 
-      deliveryLat, 
+    const {
+      customerId,
+      itemsText,
+      estimatedPrice,
+      deliveryAddress,
+      deliveryLat,
       deliveryLng,
       pickupAddress,
       notes,
-      area 
+      area
     } = req.body;
+
+    // Check if user is blocked
+    if (customerId) {
+      const user = await User.findByPk(customerId);
+      if (user && user.isBlocked) {
+        return res.status(403).json({
+          success: false,
+          message: 'تم حظرك من قبل الإدارة. لا يمكنك إجراء طلبات جديدة.'
+        });
+      }
+    }
 
     // Validation
     if (!itemsText || !deliveryAddress) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'itemsText و deliveryAddress مطلوبة' 
+      return res.status(400).json({
+        success: false,
+        message: 'itemsText و deliveryAddress مطلوبة'
       });
     }
 
@@ -175,10 +186,10 @@ router.post('/:id/assign', async (req, res) => {
 router.post('/:id/accept', async (req, res) => {
   try {
     const { driverId } = req.body;
-    
+
     // Use matching service for atomic lock
     const result = await matchingService.acceptOrder(req.params.id, driverId);
-    
+
     if (!result.success) {
       return res.status(400).json(result);
     }
@@ -236,7 +247,7 @@ router.post('/:id/pickup', async (req, res) => {
     order.invoiceImageUrl = invoiceImageUrl;
     order.status = 'PICKED_UP';
     order.pickedAt = new Date();
-    
+
     // Update actual price if provided
     if (actualPrice) {
       order.estimatedPrice = actualPrice;
@@ -357,28 +368,28 @@ router.post('/:id/complete', async (req, res) => {
 
     // Rating is REQUIRED (unless admin override)
     if (!rating && !adminOverride) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'يجب إرسال التقييم لإغلاق الطلب (rating: 1-5)' 
+      return res.status(400).json({
+        success: false,
+        message: 'يجب إرسال التقييم لإغلاق الطلب (rating: 1-5)'
       });
     }
 
     // Validate rating range
     if (rating && (rating < 1 || rating > 5)) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'التقييم يجب أن يكون بين 1 و 5' 
+      return res.status(400).json({
+        success: false,
+        message: 'التقييم يجب أن يكون بين 1 و 5'
       });
     }
 
     // Complete order
     order.status = 'COMPLETED';
     order.completedAt = new Date();
-    
+
     // Calculate driver share
     const totalAmount = parseFloat(order.estimatedPrice || 0) + parseFloat(order.deliveryFee);
     order.driverShare = totalAmount - parseFloat(order.commissionAmount);
-    
+
     await order.save();
 
     // Add commission to driver's pending settlement
@@ -509,8 +520,8 @@ router.get('/:id', async (req, res) => {
     const order = await Order.findByPk(req.params.id, {
       include: [
         { model: User, as: 'customer', attributes: ['id', 'name', 'phone'] },
-        { 
-          model: Driver, 
+        {
+          model: Driver,
           include: [{ model: User, attributes: ['name', 'phone'] }],
         },
       ],
@@ -532,7 +543,7 @@ router.get('/:id', async (req, res) => {
 router.get('/', async (req, res) => {
   try {
     const { customerId, driverId, status, limit = 20, offset = 0 } = req.query;
-    
+
     const where = {};
     if (customerId) where.customerId = customerId;
     if (driverId) where.driverId = driverId;

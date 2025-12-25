@@ -12,6 +12,7 @@ dependencies:
   flutter_localizations:
     sdk: flutter
   intl: ^0.20.2
+  google_fonts: ^6.1.0
   cupertino_icons: ^1.0.6
   url_launcher: ^6.2.1
   shared_preferences: ^2.2.2
@@ -46,9 +47,9 @@ flutter_native_splash:
 flutter_launcher_icons:
   android: true
   ios: true
-  image_path: "assets/icon.png.png"
+  image_path: "assets/icon.png"
   adaptive_icon_background: "#FF6B35"
-  adaptive_icon_foreground: "assets/icon.png.png"
+  adaptive_icon_foreground: "assets/icon.png"
 
 flutter:
   uses-material-design: true

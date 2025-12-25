@@ -1,4 +1,5 @@
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -10,6 +11,7 @@ import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'dart:convert';
 import 'dart:async';
+import 'dart:io';
 import 'splash_screen.dart';
 import 'services/text_service.dart';
 import 'config/app_config.dart';
@@ -58,7 +60,8 @@ class Dalla3niApp extends StatelessWidget {
           secondary: AppColors.secondary,
         ),
         useMaterial3: true,
-        fontFamily: 'Cairo',
+        textTheme: GoogleFonts.cairoTextTheme(Theme.of(context).textTheme),
+        fontFamily: GoogleFonts.cairo().fontFamily,
         appBarTheme: const AppBarTheme(
           backgroundColor: AppColors.primary,
           foregroundColor: Colors.white,
@@ -421,8 +424,26 @@ class _CustomerRegisterScreenState extends State<CustomerRegisterScreen> {
       return;
     }
     
-    // Add +963 prefix
-    final fullPhone = phone.startsWith('+963') ? phone : '+963$phone';
+    // Standardize phone number format
+    // 1. Remove any non-digit characters
+    String cleanInput = phone.replaceAll(RegExp(r'\D'), '');
+    
+    // 2. Handle cases:
+    // - Starts with 09... -> Remove 0, add +963
+    // - Starts with 9... -> Add +963
+    // - Starts with 963... -> Add + (if missing)
+    
+    String fullPhone;
+    if (cleanInput.startsWith('963')) {
+      fullPhone = '+$cleanInput';
+    } else if (cleanInput.startsWith('09')) {
+      fullPhone = '+963${cleanInput.substring(1)}';
+    } else if (cleanInput.startsWith('9')) {
+      fullPhone = '+963$cleanInput';
+    } else {
+      // Fallback or invalid? Let backend validation handle it, or assume local without 0
+      fullPhone = '+963$cleanInput';
+    }
 
     setState(() => _isLoading = true);
 
@@ -450,7 +471,7 @@ class _CustomerRegisterScreenState extends State<CustomerRegisterScreen> {
             headers: {'Content-Type': 'application/json'},
             body: json.encode({
               'phone': fullPhone,
-              'otp': data['otp'] ?? '000000', // OTP from API response
+              'otp': data['debug_otp'] ?? '000000', // Match backend field 'debug_otp'
             }),
           );
           
@@ -466,19 +487,21 @@ class _CustomerRegisterScreenState extends State<CustomerRegisterScreen> {
             await prefs.setBool('is_logged_in', true);
             await prefs.setString('user_type', 'customer');
             await prefs.setString('login_time', DateTime.now().toIso8601String());
+            
+            // Save tokens
+            if (verifyData['accessToken'] != null) {
+              await prefs.setString('access_token', verifyData['accessToken']);
+            }
+            if (verifyData['refreshToken'] != null) {
+              await prefs.setString('refresh_token', verifyData['refreshToken']);
+            }
           }
         }
       } catch (apiError) {
-        // If API fails, still save locally (offline mode)
         if (kDebugMode) {
           debugPrint('API Error: $apiError');
         }
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('customer_name', name);
-        await prefs.setString('customer_phone', fullPhone);
-        await prefs.setBool('is_logged_in', true);
-        await prefs.setString('user_type', 'customer');
-        await prefs.setString('login_time', DateTime.now().toIso8601String());
+        rethrow;
       }
       
       if (mounted) {
@@ -673,7 +696,7 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
                 children: [
                   const Text('مناطق التواجد الدائم *', style: TextStyle(fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
-                  Text('اكتب المناطق التي تتواجد فيها بشكل دائم (مثال: جبل عمان، وسط البلد، الشميساني)', style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                  Text('اكتب المناطق التي تتواجد فيها بشكل دائم (مثال: النهضة، السويداء)', style: TextStyle(color: Colors.grey[600], fontSize: 12)),
                   const SizedBox(height: 12),
                   TextFormField(
                     controller: _areasController,
@@ -681,7 +704,7 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
                     maxLines: 3,
                     decoration: InputDecoration(
                       labelText: 'اكتب المناطق',
-                      hintText: 'مثال: جبل عمان، وسط البلد، الشميساني',
+                      hintText: 'مثال: النهضة، السويداء',
                       prefixIcon: const Icon(Icons.location_on),
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                     ),
@@ -817,12 +840,26 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
         return;
       }
       final phone = _phoneController.text.trim();
-      if (!phone.startsWith('+963') || phone.length < 13) {
+      // Accept phone numbers in different formats: 0936447387, 936447387, +963936447387
+      String normalizedPhone = phone;
+      if (phone.startsWith('0')) {
+        // Convert 0936447387 to +963936447387
+        normalizedPhone = '+963${phone.substring(1)}';
+      } else if (!phone.startsWith('+963')) {
+        // Add +963 prefix if missing
+        normalizedPhone = '+963$phone';
+      }
+      
+      // Accept any valid format as per user request
+      if (normalizedPhone.length < 9) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('الرجاء إدخال رقم هاتف صحيح')),
         );
         return;
       }
+      
+      // Update the controller with normalized phone
+      _phoneController.text = normalizedPhone;
     } else if (_currentStep == 1) {
       if (_idImagePath == null || _bikeImagePath == null) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -889,15 +926,31 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
     final phone = _phoneController.text.trim();
     final name = _nameController.text.trim();
     
-    if (phone.isEmpty || phone.length < 9) {
+    // Normalize phone number: Remove all non-digits first
+    String cleanInput = phone.replaceAll(RegExp(r'\D'), '');
+    String fullPhone;
+    
+    // Strict logic:
+    // 09... -> +9639...
+    // 9... -> +963...
+    // 963... -> +963...
+    if (cleanInput.startsWith('963')) {
+      fullPhone = '+$cleanInput';
+    } else if (cleanInput.startsWith('09')) {
+      fullPhone = '+963${cleanInput.substring(1)}';
+    } else if (cleanInput.startsWith('9')) {
+      fullPhone = '+963$cleanInput';
+    } else {
+      fullPhone = '+963$cleanInput';
+    }
+    
+    // Accept any valid format as per user request
+    if (fullPhone.length < 9) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('الرجاء إدخال رقم هاتف صحيح')),
       );
       return;
     }
-    
-    // Add +963 prefix
-    final fullPhone = phone.startsWith('+963') ? phone : '+963$phone';
 
     setState(() => _isLoading = true);
 
@@ -911,21 +964,31 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
             .where((e) => e.isNotEmpty)
             .toList();
         
-        final response = await http.post(
-          Uri.parse(AppConfig.driverRegister),
-          headers: {'Content-Type': 'application/json'},
-          body: json.encode({
-            'fullName': name,
-            'phone': fullPhone,
-            'idPhoto': _idImagePath ?? 'placeholder',
-            'bikePhoto': _bikeImagePath ?? 'placeholder',
-            'plateNumber': 'N/A', // Not required anymore
-            'bikeModel': null,
-            'areaTags': areasList,
-            'availabilityStart': '${_startTime.hour.toString().padLeft(2, '0')}:${_startTime.minute.toString().padLeft(2, '0')}',
-            'availabilityEnd': '${_endTime.hour.toString().padLeft(2, '0')}:${_endTime.minute.toString().padLeft(2, '0')}',
-          }),
+        var request = http.MultipartRequest('POST', Uri.parse(AppConfig.driverRegister));
+        
+        request.fields['fullName'] = name;
+        request.fields['phone'] = fullPhone;
+        request.fields['plateNumber'] = 'N/A';
+        request.fields['areaTags'] = json.encode(areasList);
+        request.fields['availabilityStart'] = '${_startTime.hour.toString().padLeft(2, '0')}:${_startTime.minute.toString().padLeft(2, '0')}';
+        request.fields['availabilityEnd'] = '${_endTime.hour.toString().padLeft(2, '0')}:${_endTime.minute.toString().padLeft(2, '0')}';
+        
+        if (_idImagePath != null) {
+          request.files.add(await http.MultipartFile.fromPath('idPhoto', _idImagePath!));
+        }
+        
+        if (_bikeImagePath != null) {
+          request.files.add(await http.MultipartFile.fromPath('bikePhoto', _bikeImagePath!));
+        }
+        
+        // Add timeout to prevent hanging requests
+        final streamedResponse = await request.send().timeout(
+          const Duration(seconds: 30),
+          onTimeout: () {
+            throw TimeoutException('انتهت مهلة الاتصال بالخادم. يرجى المحاولة مرة أخرى.');
+          },
         );
+        final response = await http.Response.fromStream(streamedResponse);
         
         if (response.statusCode == 201) {
           final data = json.decode(response.body);
@@ -934,23 +997,27 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
             final prefs = await SharedPreferences.getInstance();
             await prefs.setString('driver_name', name);
             await prefs.setString('driver_phone', fullPhone);
-            await prefs.setString('driver_id', data['driverId'] ?? '');
+            await prefs.setString('driver_id', data['driverId']?.toString() ?? '');
             await prefs.setBool('is_logged_in', true);
             await prefs.setString('user_type', 'driver');
             await prefs.setString('login_time', DateTime.now().toIso8601String());
           }
+        } else {
+          // Handle non-success status codes
+          String errorMessage = 'فشل في تسجيل السائق';
+          try {
+            final errorData = json.decode(response.body);
+            errorMessage = errorData['message'] ?? errorMessage;
+          } catch (_) {
+            errorMessage = 'خطأ في الخادم (${response.statusCode})';
+          }
+          throw Exception(errorMessage);
         }
       } catch (apiError) {
-        // If API fails, still save locally
         if (kDebugMode) {
           debugPrint('API Error: $apiError');
         }
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('driver_name', name);
-        await prefs.setString('driver_phone', fullPhone);
-        await prefs.setBool('is_logged_in', true);
-        await prefs.setString('user_type', 'driver');
-        await prefs.setString('login_time', DateTime.now().toIso8601String());
+        rethrow;
       }
 
       if (!mounted) return;
@@ -966,10 +1033,35 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
+        
+        // Handle different error types with user-friendly Arabic messages
+        String errorMessage = 'حدث خطأ غير متوقع';
+        
+        if (e is SocketException) {
+          errorMessage = 'لا يمكن الاتصال بالخادم. يرجى التحقق من اتصال الإنترنت والمحاولة مرة أخرى.';
+        } else if (e is TimeoutException) {
+          errorMessage = 'انتهت مهلة الاتصال. يرجى التحقق من اتصال الإنترنت والمحاولة مرة أخرى.';
+        } else if (e is HttpException) {
+          errorMessage = 'خطأ في الاتصال بالخادم. يرجى المحاولة مرة أخرى.';
+        } else if (e.toString().contains('Failed host lookup')) {
+          errorMessage = 'لا يمكن الوصول إلى الخادم. يرجى التحقق من اتصال الإنترنت.';
+        } else if (e.toString().contains('Connection refused')) {
+          errorMessage = 'تم رفض الاتصال بالخادم. يرجى المحاولة لاحقاً.';
+        } else if (e.toString().isNotEmpty) {
+          // Try to extract meaningful error message
+          final errorStr = e.toString();
+          if (errorStr.contains('message') || errorStr.contains('خطأ') || errorStr.contains('فشل')) {
+            errorMessage = errorStr;
+          } else {
+            errorMessage = 'حدث خطأ: $errorStr';
+          }
+        }
+        
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('حدث خطأ: ${e.toString()}'),
+            content: Text(errorMessage),
             backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
           ),
         );
       }
@@ -1524,7 +1616,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                       style: TextStyle(color: Colors.grey[600], fontSize: 13),
                     ),
                     Text(
-                      '${order['estimatedPrice']} دينار',
+                      '${order['estimatedPrice']} ل.س',
                       style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
                   ],
@@ -2068,54 +2160,67 @@ class _MatchingDriverScreenState extends State<MatchingDriverScreen> with Single
       }
     }
     
-    // TODO: Call API to find nearest driver
-    // This should:
-    // 1. Get customer location (latitude, longitude from orderData)
-    // 2. Find all available drivers with their current locations
-    // 3. Calculate distances using Geolocator.distanceBetween()
-    // 4. Sort drivers by distance
-    // 5. Send push notification to nearest driver
-    // 6. Wait for driver acceptance
-    
-    // Example calculation:
-    // double distanceInMeters = Geolocator.distanceBetween(
-    //   customerLat, customerLng,
-    //   driverLat, driverLng,
-    // );
-    
-    // Simulate API call
-    await Future.delayed(const Duration(seconds: 2));
-    
-    // TODO: Send push notification to nearest driver
-    // Example: await NotificationService.sendToDriver(nearestDriverId, {
-    //   'type': 'NEW_ORDER',
-    //   'orderId': orderId,
-    //   'customerLocation': {'lat': lat, 'lng': lng},
-    //   'address': address,
-    //   'distance': distanceInKm,
-    // });
-    
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('تم إرسال الطلب لأقرب سائق'),
-          backgroundColor: Colors.green,
-        ),
-      );
-      
-      // Navigate to tracking screen
-      await Future.delayed(const Duration(seconds: 1));
-      
+    final orderId = widget.orderData?['orderId'];
+    if (orderId == null || orderId.isEmpty) {
       if (mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (_) => OrderTrackingScreen(
-              orderData: widget.orderData,
+        // Fallback if no order ID was provided
+        await Future.delayed(const Duration(seconds: 2));
+        if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (_) => OrderTrackingScreen(orderData: widget.orderData),
             ),
+          );
+        }
+      }
+      return;
+    }
+
+    // Poll for status update
+    bool driverAssigned = false;
+    int attempts = 0;
+    const maxAttempts = 20; // ~1 minute timeout
+
+    while (!driverAssigned && attempts < maxAttempts && mounted) {
+      try {
+        final response = await http.get(Uri.parse(AppConfig.orderById(orderId)));
+        if (response.statusCode == 200) {
+          final data = json.decode(response.body);
+          if (data['success'] && data['order'] != null) {
+            final order = data['order'];
+            if (order['status'] != 'REQUESTED' && order['status'] != 'PENDING') {
+              driverAssigned = true;
+              break;
+            }
+          }
+        }
+      } catch (e) {
+        if (kDebugMode) debugPrint('Poll error: $e');
+      }
+      
+      attempts++;
+      await Future.delayed(const Duration(seconds: 3));
+    }
+
+    if (mounted) {
+      if (driverAssigned) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('تم تواصل طلبكم مع السائق بنجاح ✓'),
+            backgroundColor: Colors.green,
           ),
         );
       }
+      
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => OrderTrackingScreen(
+            orderData: widget.orderData,
+          ),
+        ),
+      );
     }
   }
 

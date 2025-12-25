@@ -20,12 +20,12 @@ class AppConfig {
       return 'https://dalla3ni-backend-v2-2.onrender.com';
     }
     
-    // Development defaults
+    // Development defaults - Using Render backend
     // For Android emulator: 10.0.2.2
     // For iOS simulator: localhost
     // For real device: use your computer's IP (e.g., 192.168.1.20)
-    // Or use production URL for testing: https://dalla3ni-backend-v2-2.onrender.com
-    return 'https://dalla3ni-backend-v2-2.onrender.com'; // Using production URL by default
+    // Default: Using Render production URL
+    return 'https://dalla3ni-backend-v2-2.onrender.com';
   }
   
   // API Endpoints
@@ -36,6 +36,9 @@ class AppConfig {
   static String get customerVerifyOtp => '$apiBaseUrl/auth/customer/verify-otp';
   static String get driverRegister => '$apiBaseUrl/auth/driver/register';
   static String driverStatusByPhone(String phone) => '$apiBaseUrl/auth/driver/status/$phone';
+  static String get driverLogin => '$apiBaseUrl/auth/driver/login';
+  static String checkBanStatus(String phone, String role) => '$apiBaseUrl/auth/check-ban/$phone?role=$role';
+  static String get authMe => '$apiBaseUrl/auth/me';
   
   // Order Endpoints
   static String get orders => '$apiBaseUrl/orders';
@@ -48,7 +51,7 @@ class AppConfig {
   static String orderComplete(String id) => '$orders/$id/complete';
   
   // Driver Endpoints
-  static String get driverLocation => '$apiBaseUrl/drivers/location';
+  static String driverLocation(String driverId) => '$apiBaseUrl/drivers/$driverId/location';
   
   // Health Check
   static String get health => '$baseUrl/health';

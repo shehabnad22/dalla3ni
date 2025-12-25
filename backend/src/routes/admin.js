@@ -34,9 +34,9 @@ router.post('/settlements/:driverId/pay', async (req, res) => {
 router.get('/settlements/history', async (req, res) => {
   try {
     const settlements = await Settlement.findAll({
-      include: [{ 
-        model: Driver, 
-        include: [{ model: User, attributes: ['name', 'phone'] }] 
+      include: [{
+        model: Driver,
+        include: [{ model: User, attributes: ['name', 'phone'] }]
       }],
       order: [['createdAt', 'DESC']],
       limit: 100,
@@ -72,10 +72,10 @@ router.post('/drivers/:driverId/unblock', async (req, res) => {
 
     // Only admin can unblock - debt must be settled first or admin override
     const { adminId, forceUnblock } = req.body;
-    
+
     if (!forceUnblock && parseFloat(driver.pendingSettlement) > 0) {
-      return res.status(400).json({ 
-        success: false, 
+      return res.status(400).json({
+        success: false,
         message: 'لا يمكن رفع الحظر. يجب تسوية المستحقات أولاً.',
         pendingSettlement: driver.pendingSettlement,
       });
@@ -85,8 +85,8 @@ router.post('/drivers/:driverId/unblock', async (req, res) => {
     driver.blockReason = null;
     await driver.save();
 
-    res.json({ 
-      success: true, 
+    res.json({
+      success: true,
       message: `تم رفع الحظر عن السائق ${driver.User?.name}`,
       driver: {
         id: driver.id,
@@ -112,7 +112,7 @@ router.post('/run-debt-check', async (req, res) => {
 router.get('/drivers', async (req, res) => {
   try {
     const drivers = await Driver.findAll({
-      include: [{ model: User, attributes: ['id', 'name', 'phone'] }],
+      include: [{ model: User, attributes: ['id', 'name', 'phone', 'email'] }],
       order: [['createdAt', 'DESC']],
     });
     res.json({ success: true, drivers });
@@ -170,9 +170,9 @@ router.get('/disputes', async (req, res) => {
       where: { status: 'DISPUTE' },
       include: [
         { model: User, as: 'customer', attributes: ['name', 'phone'] },
-        { 
-          model: Driver, 
-          include: [{ model: User, attributes: ['name', 'phone'] }] 
+        {
+          model: Driver,
+          include: [{ model: User, attributes: ['name', 'phone'] }]
         },
       ],
       order: [['createdAt', 'DESC']],
@@ -239,7 +239,7 @@ router.get('/settings', async (req, res) => {
 router.put('/settings', async (req, res) => {
   try {
     const { commissionAmount, storesEnabled, dailySettlementTime } = req.body;
-    
+
     // Update environment variables (in production, use database or config service)
     if (commissionAmount !== undefined) {
       process.env.COMMISSION_AMOUNT = commissionAmount.toString();
@@ -275,7 +275,7 @@ router.get('/stats', async (req, res) => {
     const totalOrders = await Order.count();
     const pendingOrders = await Order.count({ where: { status: 'REQUESTED' } });
     const totalUsers = await User.count({ where: { role: 'customer' } });
-    
+
     const totalPendingSettlement = await Driver.sum('pendingSettlement') || 0;
 
     res.json({
@@ -299,7 +299,7 @@ router.get('/stats', async (req, res) => {
 router.get('/users', async (req, res) => {
   try {
     const { sort = 'newest', search = '' } = req.query;
-    
+
     let orderBy = [['createdAt', 'DESC']];
     if (sort === 'oldest') {
       orderBy = [['createdAt', 'ASC']];
@@ -323,7 +323,7 @@ router.get('/users', async (req, res) => {
     const users = await User.findAll({
       where,
       order: orderBy,
-      attributes: ['id', 'name', 'phone', 'createdAt'],
+      attributes: ['id', 'name', 'phone', 'isBlocked', 'createdAt'],
     });
 
     // Get orders count for each user
@@ -334,6 +334,7 @@ router.get('/users', async (req, res) => {
           id: user.id,
           name: user.name,
           phone: user.phone,
+          isBlocked: user.isBlocked,
           registerTime: user.createdAt,
           ordersCount,
         };
@@ -350,7 +351,7 @@ router.get('/users', async (req, res) => {
 router.get('/orders', async (req, res) => {
   try {
     const { status } = req.query;
-    
+
     const where = {};
     if (status && status !== 'all') {
       where.status = status.toUpperCase();
@@ -386,7 +387,7 @@ router.get('/orders', async (req, res) => {
 router.get('/invoices', async (req, res) => {
   try {
     const { location } = req.query;
-    
+
     const where = {
       invoiceImageUrl: { [Op.ne]: null },
     };
@@ -564,6 +565,43 @@ router.get('/delayed', async (req, res) => {
     delayed.sort((a, b) => b.delayMinutes - a.delayMinutes);
 
     res.json({ success: true, delayed });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Block customer
+router.post('/users/:userId/block', async (req, res) => {
+  try {
+    const { reason } = req.body;
+    const user = await User.findByPk(req.params.userId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    user.isBlocked = true;
+    user.blockReason = reason || 'حظر يدوي من الإدارة';
+    await user.save();
+
+    res.json({ success: true, message: 'تم حظر الزبون' });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Unblock customer
+router.post('/users/:userId/unblock', async (req, res) => {
+  try {
+    const user = await User.findByPk(req.params.userId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    user.isBlocked = false;
+    user.blockReason = null;
+    await user.save();
+
+    res.json({ success: true, message: 'تم رفع الحظر عن الزبون' });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }

@@ -34,8 +34,38 @@ class DriverApp extends StatelessWidget {
         fontFamily: 'Cairo',
       ),
       builder: (context, child) => Directionality(textDirection: TextDirection.rtl, child: child!),
-      home: const DriverLoginScreen(),
+      home: const DriverAuthWrapper(),
     );
+  }
+}
+
+// ==================== Driver Auth Wrapper ====================
+class DriverAuthWrapper extends StatelessWidget {
+  const DriverAuthWrapper({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<bool>(
+      future: _checkLogin(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+        if (snapshot.data == true) {
+          return const DriverHomeScreen();
+        }
+        return const DriverLoginScreen();
+      },
+    );
+  }
+
+  Future<bool> _checkLogin() async {
+    final prefs = await SharedPreferences.getInstance();
+    final isLoggedIn = prefs.getBool('is_logged_in') ?? false;
+    final userType = prefs.getString('user_type') ?? '';
+    return isLoggedIn && userType == 'driver';
   }
 }
 
@@ -195,37 +225,116 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
       return;
     }
     
-    // Normalize phone number - remove any spaces, dashes, or other characters
-    String normalizedPhone = phone.replaceAll(RegExp(r'[\s\-\(\)]'), '');
+    // Standardize phone number format
+    // 1. Remove any non-digit characters
+    String cleanInput = phone.replaceAll(RegExp(r'\D'), '');
     
-    // Add +963 prefix if not present
+    // 2. Handle cases:
+    // - Starts with 09... -> Remove 0, add +963
+    // - Starts with 9... -> Add +963
+    // - Starts with 963... -> Add + (if missing)
+    
     String fullPhone;
-    if (normalizedPhone.startsWith('+963')) {
-      fullPhone = normalizedPhone;
-    } else if (normalizedPhone.startsWith('963')) {
-      fullPhone = '+$normalizedPhone';
-    } else if (normalizedPhone.startsWith('0')) {
-      fullPhone = '+963${normalizedPhone.substring(1)}';
+    if (cleanInput.startsWith('963')) {
+      fullPhone = '+$cleanInput';
+    } else if (cleanInput.startsWith('09')) {
+      fullPhone = '+963${cleanInput.substring(1)}';
+    } else if (cleanInput.startsWith('9')) {
+      fullPhone = '+963$cleanInput';
     } else {
-      fullPhone = '+963$normalizedPhone';
+      fullPhone = '+963$cleanInput';
     }
     
     setState(() => _isLoading = true);
     
     try {
-      // Call API to check driver status by phone
-      final url = Uri.parse(AppConfig.driverStatusByPhone(fullPhone));
-      final response = await http.get(url);
-      
-      String driverStatus = 'PENDING_REVIEW';
+      // Call API to login driver (new endpoint)
+      final url = Uri.parse(AppConfig.driverLogin);
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({'phone': fullPhone}),
+      );
       
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         if (data['success'] == true) {
-          driverStatus = data['status']?.toString() ?? 
-                        data['accountStatus']?.toString() ?? 
-                        'PENDING_REVIEW';
+          // Login successful - save tokens and user data
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setBool('is_logged_in', true);
+          await prefs.setString('user_type', 'driver');
+          await prefs.setString('driver_phone', fullPhone);
+          await prefs.setString('driver_status', 'APPROVED');
+          await prefs.setString('access_token', data['accessToken'] ?? '');
+          await prefs.setString('refresh_token', data['refreshToken'] ?? '');
+          
+          // Save driver ID from response
+          if (data['driver'] != null && data['driver']['id'] != null) {
+            await prefs.setString('driver_id', data['driver']['id'].toString());
+          } else if (data['driverId'] != null) {
+            await prefs.setString('driver_id', data['driverId'].toString());
+          }
+          
+          if (mounted) {
+            setState(() {
+              _isLoading = false;
+              _accountStatus = 'APPROVED';
+            });
+            
+            // Navigate to home after short delay
+            Future.delayed(const Duration(seconds: 1), () {
+              if (mounted) {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(builder: (_) => const DriverHomeScreen()),
+                );
+              }
+            });
+          }
+          return;
         }
+      } else if (response.statusCode == 403) {
+        // User is blocked or not approved
+        final errorData = json.decode(response.body);
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+            _accountStatus = errorData['accountStatus'] ?? 'PENDING_REVIEW';
+          });
+          
+          if (errorData['isBlocked'] == true) {
+            // Show ban message
+            showDialog(
+              context: context,
+              barrierDismissible: false,
+              builder: (context) => AlertDialog(
+                title: const Row(
+                  children: [
+                    Icon(Icons.block, color: Colors.red, size: 28),
+                    SizedBox(width: 8),
+                    Text('تم حظرك'),
+                  ],
+                ),
+                content: Text(errorData['message'] ?? 'لقد خالفت معايير الاستخدام وتم حظرك'),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('حسناً'),
+                  ),
+                ],
+              ),
+            );
+          } else {
+            // Not approved - show status
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(errorData['message'] ?? 'حسابك قيد المراجعة'),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          }
+        }
+        return;
       } else if (response.statusCode == 404) {
         // Driver not found - show registration option
         if (mounted) {
@@ -254,23 +363,6 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
           );
         }
         return;
-      }
-      
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-          _accountStatus = driverStatus;
-        });
-        
-        // Save login state
-        if (driverStatus == 'APPROVED') {
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setBool('is_logged_in', true);
-          await prefs.setString('user_type', 'driver');
-          await prefs.setString('driver_phone', fullPhone);
-          await prefs.setString('driver_status', driverStatus);
-          await prefs.setString('login_time', DateTime.now().toIso8601String());
-        }
       }
     } catch (e) {
       if (mounted) {
@@ -336,8 +428,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     // Start listening to position updates
     _positionStream = Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.high,
-        distanceFilter: 10, // Update every 10 meters
+        accuracy: LocationAccuracy.bestForNavigation,
+        distanceFilter: 5, // Update every 5 meters for higher precision
       ),
     ).listen((Position position) {
       setState(() {
@@ -352,16 +444,25 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   }
 
   Future<void> _updateDriverLocation(Position position) async {
-    // TODO: Send location to server
-    // await http.post('/api/driver/location', body: {
-    //   'driverId': driverId,
-    //   'latitude': position.latitude,
-    //   'longitude': position.longitude,
-    //   'timestamp': DateTime.now().toIso8601String(),
-    // });
+    final prefs = await SharedPreferences.getInstance();
+    final driverId = prefs.getString('driver_id');
+    if (driverId == null) return;
+
+    try {
+      final url = Uri.parse(AppConfig.driverLocation(driverId));
+      await http.patch(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'latitude': position.latitude,
+          'longitude': position.longitude,
+        }),
+      );
+    } catch (e) {
+      debugPrint('Error updating location: $e');
+    }
     
     // Save to local storage
-    final prefs = await SharedPreferences.getInstance();
     await prefs.setDouble('driver_latitude', position.latitude);
     await prefs.setDouble('driver_longitude', position.longitude);
   }
@@ -675,7 +776,7 @@ class _IncomingOrderDialogState extends State<_IncomingOrderDialog> {
           if (widget.distance > 0)
             _InfoRow(icon: Icons.straighten, label: 'المسافة', value: '${widget.distance.toStringAsFixed(1)} كم'),
           if (widget.order['estimatedPrice'] != null)
-            _InfoRow(icon: Icons.attach_money, label: 'السعر التقديري', value: '${widget.order['estimatedPrice']} دينار'),
+            _InfoRow(icon: Icons.attach_money, label: 'السعر التقديري', value: '${widget.order['estimatedPrice']} ل.س'),
         ],
       ),
       actions: [
@@ -956,7 +1057,7 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
             _DetailRow(icon: Icons.location_on, label: 'التوصيل إلى', value: _job['deliveryAddress'] ?? ''),
             
             if (_job['estimatedPrice'] != null)
-              _DetailRow(icon: Icons.attach_money, label: 'السعر التقديري', value: '${_job['estimatedPrice']} دينار'),
+              _DetailRow(icon: Icons.attach_money, label: 'السعر التقديري', value: '${_job['estimatedPrice']} ل.س'),
             
             if (_job['notes'] != null && _job['notes'].toString().isNotEmpty)
               _DetailRow(icon: Icons.note, label: 'ملاحظات', value: _job['notes']),
@@ -966,14 +1067,14 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 const Text('العمولة:', style: TextStyle(color: Colors.grey)),
-                Text('${_job['commissionAmount'] ?? 1.5} دينار', style: const TextStyle(fontWeight: FontWeight.bold)),
+                Text('${_job['commissionAmount'] ?? 1.5} ل.س', style: const TextStyle(fontWeight: FontWeight.bold)),
               ],
             ),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 const Text('حصتك:', style: TextStyle(color: Colors.grey)),
-                Text('${_job['driverShare'] ?? 0} دينار', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
+                Text('${_job['driverShare'] ?? 0} ل.س', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
               ],
             ),
             
@@ -1243,7 +1344,7 @@ class _JobDetailsScreenState extends State<JobDetailsScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   const Text('العمولة المضافة:'),
-                  Text('${_job['commissionAmount'] ?? 1.5} دينار', style: const TextStyle(fontWeight: FontWeight.bold)),
+                  Text('${_job['commissionAmount'] ?? 1.5} ل.س', style: const TextStyle(fontWeight: FontWeight.bold)),
                 ],
               ),
             ),
@@ -1322,7 +1423,7 @@ class DriverWalletScreen extends StatelessWidget {
               children: [
                 const Text('المستحقات المعلقة', style: TextStyle(color: Colors.white70, fontSize: 14)),
                 const SizedBox(height: 8),
-                const Text('$pendingSettlement دينار', style: TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.bold)),
+                const Text('$pendingSettlement ل.س', style: TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 16),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -1330,7 +1431,7 @@ class DriverWalletScreen extends StatelessWidget {
                     color: Colors.white.withOpacity(0.2),
                     borderRadius: BorderRadius.circular(20),
                   ),
-                  child: const Text('$completedOrders طلب × 1.5 دينار', style: TextStyle(color: Colors.white)),
+                  child: const Text('$completedOrders طلب × 1.5 ل.س', style: TextStyle(color: Colors.white)),
                 ),
               ],
             ),

@@ -10,6 +10,9 @@ const { sequelize } = require('./models');
 const { runEndOfDayCheck } = require('./jobs/endOfDayCheck');
 const { standardRateLimiter, authRateLimiter } = require('./middleware/rateLimiter');
 const { sanitizeInput } = require('./middleware/validator');
+const path = require('path');
+const fs = require('fs');
+const multer = require('multer');
 
 const app = express();
 
@@ -19,20 +22,20 @@ app.use(helmet({
 }));
 
 // CORS Configuration
-const allowedOrigins = process.env.ALLOWED_ORIGINS 
+const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',').map(origin => origin.trim())
   : ['*']; // Allow all origins by default (can be restricted later)
 
 app.use(cors({
-  origin: allowedOrigins.includes('*') 
-    ? '*' 
+  origin: allowedOrigins.includes('*')
+    ? '*'
     : (origin, callback) => {
-        if (!origin || allowedOrigins.includes(origin)) {
-          callback(null, true);
-        } else {
-          callback(new Error('Not allowed by CORS'));
-        }
-      },
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
@@ -44,6 +47,20 @@ app.use(morgan('dev'));
 // Body Parser
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Static Files & Uploads Setup
+const uploadsDir = path.join(__dirname, '../uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir);
+}
+if (!fs.existsSync(path.join(uploadsDir, 'drivers'))) {
+  fs.mkdirSync(path.join(uploadsDir, 'drivers'));
+}
+if (!fs.existsSync(path.join(uploadsDir, 'orders'))) {
+  fs.mkdirSync(path.join(uploadsDir, 'orders'));
+}
+
+app.use('/uploads', express.static(uploadsDir));
 
 // Input Sanitization
 app.use(sanitizeInput);
@@ -104,9 +121,9 @@ const swaggerOptions = {
             deliveryFee: { type: 'number', format: 'float' },
             commissionAmount: { type: 'number', format: 'float' },
             deliveryCode: { type: 'string', pattern: '^\\d{4}$' },
-            status: { 
-              type: 'string', 
-              enum: ['REQUESTED', 'ASSIGNED', 'PICKED_UP', 'EN_ROUTE', 'DELIVERED', 'COMPLETED', 'CANCELED', 'DISPUTE'] 
+            status: {
+              type: 'string',
+              enum: ['REQUESTED', 'ASSIGNED', 'PICKED_UP', 'EN_ROUTE', 'DELIVERED', 'COMPLETED', 'CANCELED', 'DISPUTE']
             },
             invoiceImageUrl: { type: 'string', format: 'uri', nullable: true },
             createdAt: { type: 'string', format: 'date-time' },
@@ -143,7 +160,7 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 // Routes
 app.get('/', (req, res) => {
-  res.json({ 
+  res.json({
     message: 'مرحباً بك في API دلّعني',
     version: '1.0.0',
     docs: '/api-docs',
@@ -152,8 +169,8 @@ app.get('/', (req, res) => {
 
 // Health Check Endpoint (no auth required)
 app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'ok', 
+  res.json({
+    status: 'ok',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
     message: 'Backend is running'
@@ -175,14 +192,14 @@ const PORT = process.env.PORT || 3000;
 // Database sync and server start
 sequelize.sync({ alter: true }).then(() => {
   console.log('✅ Database synced');
-  
+
   // Schedule daily debt check at 23:59
   cron.schedule('59 23 * * *', async () => {
     console.log('🕛 Running scheduled end of day debt check...');
     await runEndOfDayCheck();
   });
   console.log('⏰ Scheduled daily debt check at 23:59');
-  
+
   app.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`);
   });

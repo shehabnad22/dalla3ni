@@ -41,6 +41,13 @@ const User = sequelize.define('User', {
     type: DataTypes.BOOLEAN,
     defaultValue: false,
   },
+  isBlocked: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+  },
+  blockReason: {
+    type: DataTypes.STRING,
+  },
 }, {
   hooks: {
     beforeCreate: async (user) => {
@@ -51,7 +58,7 @@ const User = sequelize.define('User', {
   },
 });
 
-User.prototype.comparePassword = async function(password) {
+User.prototype.comparePassword = async function (password) {
   return bcrypt.compare(password, this.password);
 };
 

@@ -5,34 +5,34 @@ const debtCheckService = require('../services/debtCheckService');
 
 async function runEndOfDayCheck() {
   console.log('🕛 Running end of day debt check...');
-  
+
   try {
     const result = await debtCheckService.checkEndOfDayDebts();
-    
+
     console.log(`✅ End of day check completed:`);
     console.log(`   - Warnings sent: ${result.warnedDrivers.length}`);
     console.log(`   - Drivers blocked: ${result.blockedDrivers.length}`);
-    
+
     if (result.warnedDrivers.length > 0) {
       console.log('   - Warned drivers:');
       result.warnedDrivers.forEach(d => {
-        console.log(`     • ${d.name} (${d.phone}): ${d.debt} دينار (${d.hoursUntilBlock.toFixed(1)}h until block)`);
-      });
-    }
-    
-    if (result.blockedDrivers.length > 0) {
-      console.log('   - Blocked drivers:');
-      result.blockedDrivers.forEach(d => {
-        console.log(`     • ${d.name} (${d.phone}): ${d.debt} دينار`);
+        console.log(`     • ${d.name} (${d.phone}): ${d.debt} ل.س (${d.hoursUntilBlock.toFixed(1)}h until block)`);
       });
     }
 
-    return { 
-      success: true, 
+    if (result.blockedDrivers.length > 0) {
+      console.log('   - Blocked drivers:');
+      result.blockedDrivers.forEach(d => {
+        console.log(`     • ${d.name} (${d.phone}): ${d.debt} ل.س`);
+      });
+    }
+
+    return {
+      success: true,
       warnedCount: result.warnedDrivers.length,
-      blockedCount: result.blockedDrivers.length, 
+      blockedCount: result.blockedDrivers.length,
       warnedDrivers: result.warnedDrivers,
-      blockedDrivers: result.blockedDrivers 
+      blockedDrivers: result.blockedDrivers
     };
   } catch (error) {
     console.error('❌ End of day check failed:', error);
