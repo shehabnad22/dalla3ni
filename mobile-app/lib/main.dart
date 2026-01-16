@@ -14,6 +14,7 @@ import 'dart:async';
 import 'dart:io';
 import 'splash_screen.dart';
 import 'services/text_service.dart';
+import 'services/image_compression_service.dart';
 import 'config/app_config.dart';
 import 'config/app_colors.dart';
 
@@ -891,9 +892,52 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
   Future<void> _pickImage(String type) async {
     try {
       final ImagePicker picker = ImagePicker();
-      // Open camera directly (no gallery option)
+      
+      // Show dialog to choose source
+      await showModalBottomSheet(
+        context: context,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        builder: (BuildContext context) {
+          return SafeArea(
+            child: Wrap(
+              children: <Widget>[
+                ListTile(
+                  leading: const Icon(Icons.photo_camera),
+                  title: const Text('التقاط صورة'),
+                  onTap: () async {
+                    Navigator.pop(context);
+                    _processImage(picker, ImageSource.camera, type);
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.photo_library),
+                  title: const Text('اختيار من المعرض'),
+                  onTap: () async {
+                    Navigator.pop(context);
+                    _processImage(picker, ImageSource.gallery, type);
+                  },
+                ),
+              ],
+            ),
+          );
+        },
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('حدث خطأ: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _processImage(ImagePicker picker, ImageSource source, String type) async {
+    try {
       final XFile? image = await picker.pickImage(
-        source: ImageSource.camera,
+        source: source,
         imageQuality: 80,
       );
       
@@ -907,7 +951,7 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('تم التقاط ${type == 'id' ? 'صورة الهوية' : 'صورة الدراجة'}'),
+            content: Text('تم اختيار ${type == 'id' ? 'صورة الهوية' : 'صورة الدراجة'}'),
             backgroundColor: Colors.green,
           ),
         );
@@ -973,12 +1017,28 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
         request.fields['availabilityStart'] = '${_startTime.hour.toString().padLeft(2, '0')}:${_startTime.minute.toString().padLeft(2, '0')}';
         request.fields['availabilityEnd'] = '${_endTime.hour.toString().padLeft(2, '0')}:${_endTime.minute.toString().padLeft(2, '0')}';
         
+        
+        // Compress images before upload
         if (_idImagePath != null) {
-          request.files.add(await http.MultipartFile.fromPath('idPhoto', _idImagePath!));
+          final idImageFile = File(_idImagePath!);
+          final compressedIdImage = await ImageCompressionService.compressImage(idImageFile);
+          if (compressedIdImage != null) {
+            request.files.add(await http.MultipartFile.fromPath('idPhoto', compressedIdImage.path));
+          } else {
+            // Fallback to original if compression fails
+            request.files.add(await http.MultipartFile.fromPath('idPhoto', _idImagePath!));
+          }
         }
         
         if (_bikeImagePath != null) {
-          request.files.add(await http.MultipartFile.fromPath('bikePhoto', _bikeImagePath!));
+          final bikeImageFile = File(_bikeImagePath!);
+          final compressedBikeImage = await ImageCompressionService.compressImage(bikeImageFile);
+          if (compressedBikeImage != null) {
+            request.files.add(await http.MultipartFile.fromPath('bikePhoto', compressedBikeImage.path));
+          } else {
+            // Fallback to original if compression fails
+            request.files.add(await http.MultipartFile.fromPath('bikePhoto', _bikeImagePath!));
+          }
         }
         
         // Add timeout to prevent hanging requests
