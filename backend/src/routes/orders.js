@@ -56,7 +56,8 @@ router.post('/', validateOrder, handleValidationErrors, async (req, res) => {
       deliveryLng,
       pickupAddress,
       notes,
-      area
+      area,
+      usePoints // New flag
     } = req.body;
 
     // Check if user is blocked
@@ -67,6 +68,38 @@ router.post('/', validateOrder, handleValidationErrors, async (req, res) => {
           success: false,
           message: 'تم حظرك من قبل الإدارة. لا يمكنك إجراء طلبات جديدة.'
         });
+      }
+
+      // Handle Points Usage
+      if (usePoints && customerId) {
+        const { sequelize } = require('../models');
+        const settings = await sequelize.models.Setting.findAll();
+        const settingsMap = settings.reduce((acc, curr) => {
+          acc[curr.key] = JSON.parse(curr.value);
+          return acc;
+        }, {});
+
+        const pointsEnabled = settingsMap.pointsEnabled || false;
+        const pointsCost = settingsMap.pointsForFreeOrder || 100;
+
+        if (pointsEnabled) {
+          if (user.points >= pointsCost) {
+            // Deduct points
+            user.points -= pointsCost;
+            await user.save();
+
+            // Set Price to 0 (Free Order)
+            req.body.estimatedPrice = 0;
+            req.body.deliveryFee = 0; // Free delivery
+            req.body.notes = (notes || '') + '\n[مدفوع بالنقاط]';
+            req.body.isPointsOrder = true;
+          } else {
+            return res.status(400).json({
+              success: false,
+              message: 'رصيد النقاط غير كافي'
+            });
+          }
+        }
       }
     }
 
@@ -105,14 +138,14 @@ router.post('/', validateOrder, handleValidationErrors, async (req, res) => {
     const order = await Order.create({
       customerId: finalCustomerId,
       itemsText,
-      estimatedPrice: estimatedPrice || null,
+      estimatedPrice: req.body.estimatedPrice || estimatedPrice || null, // Use potentially updated price
       deliveryAddress,
       deliveryLat: deliveryLat ? parseFloat(deliveryLat) : null,
       deliveryLng: deliveryLng ? parseFloat(deliveryLng) : null,
       pickupAddress: pickupAddress || deliveryAddress,
-      notes,
+      notes: req.body.notes || notes,
       status: 'REQUESTED',
-      deliveryFee: 1.5,
+      deliveryFee: req.body.deliveryFee !== undefined ? req.body.deliveryFee : 1.5,
       commissionAmount: featureFlags.commission_amount,
     });
 
@@ -398,6 +431,33 @@ router.post('/:id/complete', async (req, res) => {
     // Make driver available again
     if (order.driverId) {
       await Driver.update({ isAvailable: true }, { where: { id: order.driverId } });
+    }
+
+    // Award Points to Customer
+    try {
+      if (order.customerId) {
+        const { sequelize } = require('../models');
+        const settings = await sequelize.models.Setting.findAll();
+        const settingsMap = settings.reduce((acc, curr) => {
+          acc[curr.key] = JSON.parse(curr.value);
+          return acc;
+        }, {});
+
+        const pointsEnabled = settingsMap.pointsEnabled || false;
+        const pointsPerOrder = parseInt(settingsMap.pointsPerOrder || 10);
+
+        if (pointsEnabled && pointsPerOrder > 0) {
+          const user = await User.findByPk(order.customerId);
+          if (user) {
+            user.points = (user.points || 0) + pointsPerOrder;
+            await user.save();
+            console.log(`🎁 Awarded ${pointsPerOrder} points to customer ${order.customerId}`);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Error awarding points:', err);
+      // Don't fail the request
     }
 
     // Save rating (required)

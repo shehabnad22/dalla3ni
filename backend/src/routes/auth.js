@@ -405,6 +405,11 @@ router.post('/driver/login', async (req, res) => {
         id: user.Driver.id,
         isAvailable: user.Driver.isAvailable,
         accountStatus: user.Driver.accountStatus,
+        rating: parseFloat(user.Driver.rating || 0),
+        totalDeliveries: user.Driver.totalDeliveries || 0,
+        workingAreas: user.Driver.workingAreas || [],
+        workStartTime: user.Driver.workStartTime,
+        workEndTime: user.Driver.workEndTime,
       },
       driverId: user.Driver.id,
     });

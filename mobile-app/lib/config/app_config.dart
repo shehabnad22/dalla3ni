@@ -39,6 +39,7 @@ class AppConfig {
   static String get driverLogin => '$apiBaseUrl/auth/driver/login';
   static String checkBanStatus(String phone, String role) => '$apiBaseUrl/auth/check-ban/$phone?role=$role';
   static String get authMe => '$apiBaseUrl/auth/me';
+  static String get users => '$apiBaseUrl/users';
   
   // Order Endpoints
   static String get orders => '$apiBaseUrl/orders';

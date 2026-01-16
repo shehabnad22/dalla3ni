@@ -221,14 +221,22 @@ router.post('/disputes/:orderId/resolve', async (req, res) => {
 // Get settings
 router.get('/settings', async (req, res) => {
   try {
-    const { featureFlags } = require('../config/featureFlags');
+    const settings = await sequelize.models.Setting.findAll();
+    const settingsMap = settings.reduce((acc, curr) => {
+      acc[curr.key] = JSON.parse(curr.value);
+      return acc;
+    }, {});
+
+    // Default values if not found
+    if (settingsMap.commissionAmount === undefined) settingsMap.commissionAmount = 1.5;
+    if (settingsMap.storesEnabled === undefined) settingsMap.storesEnabled = false;
+    if (settingsMap.pointsEnabled === undefined) settingsMap.pointsEnabled = false;
+    if (settingsMap.pointsPerOrder === undefined) settingsMap.pointsPerOrder = 10;
+    if (settingsMap.pointsForFreeOrder === undefined) settingsMap.pointsForFreeOrder = 100;
+
     res.json({
       success: true,
-      settings: {
-        commissionAmount: featureFlags.commission_amount,
-        storesEnabled: featureFlags.stores_enabled,
-        dailySettlementTime: '23:59',
-      },
+      settings: settingsMap,
     });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -238,28 +246,39 @@ router.get('/settings', async (req, res) => {
 // Update settings
 router.put('/settings', async (req, res) => {
   try {
-    const { commissionAmount, storesEnabled, dailySettlementTime } = req.body;
+    const {
+      commissionAmount,
+      storesEnabled,
+      pointsEnabled,
+      pointsPerOrder,
+      pointsForFreeOrder
+    } = req.body;
 
-    // Update environment variables (in production, use database or config service)
-    if (commissionAmount !== undefined) {
-      process.env.COMMISSION_AMOUNT = commissionAmount.toString();
-    }
-    if (storesEnabled !== undefined) {
-      process.env.STORES_ENABLED = storesEnabled.toString();
-    }
+    const Setting = sequelize.models.Setting;
 
-    // Reload feature flags
-    delete require.cache[require.resolve('../config/featureFlags')];
-    const { featureFlags } = require('../config/featureFlags');
+    // Helper to upsert setting
+    const saveSetting = async (key, value) => {
+      if (value !== undefined) {
+        const [setting] = await Setting.upsert({
+          key,
+          value: JSON.stringify(value),
+        });
+      }
+    };
+
+    await saveSetting('commissionAmount', commissionAmount);
+    await saveSetting('storesEnabled', storesEnabled);
+    await saveSetting('pointsEnabled', pointsEnabled);
+    await saveSetting('pointsPerOrder', pointsPerOrder);
+    await saveSetting('pointsForFreeOrder', pointsForFreeOrder);
+
+    // Update feature flags in memory (backwards compatibility)
+    if (commissionAmount !== undefined) process.env.COMMISSION_AMOUNT = commissionAmount.toString();
+    if (storesEnabled !== undefined) process.env.STORES_ENABLED = storesEnabled.toString();
 
     res.json({
       success: true,
-      message: 'تم تحديث الإعدادات',
-      settings: {
-        commissionAmount: featureFlags.commission_amount,
-        storesEnabled: featureFlags.stores_enabled,
-        dailySettlementTime: dailySettlementTime || '23:59',
-      },
+      message: 'تم تحديث الإعدادات بنجاح',
     });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -371,10 +390,12 @@ router.get('/orders', async (req, res) => {
 
     const formattedOrders = orders.map(order => ({
       id: order.id,
-      customer: order.customer?.name || 'غير معروف',
-      driver: order.Driver?.User?.name || null,
+      customer: order.customer,
+      Driver: order.Driver,
       status: order.status,
-      time: order.createdAt,
+      createdAt: order.createdAt,
+      itemsText: order.itemsText,
+      estimatedPrice: order.estimatedPrice,
     }));
 
     res.json({ success: true, orders: formattedOrders });

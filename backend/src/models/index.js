@@ -3,9 +3,23 @@ const User = require('./User');
 const Driver = require('./Driver');
 const Order = require('./Order');
 const Review = require('./Review');
+const AuditLog = require('./AuditLog');
+const Setting = require('./Setting');
+
 const Wallet = require('./Wallet');
 const Settlement = require('./Settlement');
-const AuditLog = require('./AuditLog');
+
+const db = {
+  sequelize,
+  User,
+  Driver,
+  Wallet,
+  Order,
+  Review,
+  AuditLog,
+  Setting,
+  Settlement,
+};
 
 // User - Driver (1:1)
 User.hasOne(Driver, { foreignKey: 'userId' });
@@ -45,4 +59,5 @@ module.exports = {
   Wallet,
   Settlement,
   AuditLog,
+  Setting,
 };

@@ -1,5 +1,6 @@
 const { Driver, User, Order, AuditLog } = require('../models');
 const { Op } = require('sequelize');
+const socketService = require('./socketService');
 
 // Area proximity map - areas grouped by proximity
 const AREA_PROXIMITY = {
@@ -32,7 +33,7 @@ const MAX_DRIVERS_TO_NOTIFY = 5;
 const orderLocks = new Map();
 
 class MatchingService {
-  
+
   /**
    * Calculate proximity score for a driver based on area tags
    * Higher score = closer/better match
@@ -42,7 +43,7 @@ class MatchingService {
     if (driverAreas.includes(orderArea)) {
       return 100;
     }
-    
+
     // Check adjacent areas
     const adjacentAreas = AREA_PROXIMITY[orderArea] || [];
     for (const area of driverAreas) {
@@ -50,7 +51,7 @@ class MatchingService {
         return 75; // Adjacent area
       }
     }
-    
+
     // Check second-degree proximity
     for (const adjacent of adjacentAreas) {
       const secondDegree = AREA_PROXIMITY[adjacent] || [];
@@ -60,7 +61,7 @@ class MatchingService {
         }
       }
     }
-    
+
     return 0; // No proximity match
   }
 
@@ -85,14 +86,14 @@ class MatchingService {
         driver.workingAreas || [],
         orderArea
       );
-      
+
       // Activity score based on last update (more recent = higher)
       const lastActivity = driver.updatedAt ? new Date(driver.updatedAt).getTime() : 0;
       const activityScore = Math.min(50, (Date.now() - lastActivity) / (1000 * 60)); // Minutes since last activity
-      
+
       // Rating bonus
       const ratingBonus = (parseFloat(driver.rating) || 0) * 5;
-      
+
       return {
         driver,
         score: proximityScore + (50 - activityScore) + ratingBonus,
@@ -114,7 +115,7 @@ class MatchingService {
   async sendNotification(driver, order) {
     // TODO: Implement actual push notification (Firebase/OneSignal)
     console.log(`📱 [PUSH] Driver ${driver.User?.name} (${driver.id}): طلب جديد #${order.id.slice(0, 8)}`);
-    
+
     // Log the notification attempt
     await AuditLog.create({
       action: 'MATCHING_NOTIFICATION_SENT',
@@ -128,6 +129,13 @@ class MatchingService {
         orderArea: order.deliveryAddress,
       },
       result: 'sent',
+    });
+
+    // Send Socket.IO notification
+    socketService.notifyDriverNewOrder(driver.id, {
+      ...order.get({ plain: true }),
+      type: 'new_order',
+      timeout: NOTIFICATION_TIMEOUT,
     });
 
     return {
@@ -184,10 +192,10 @@ class MatchingService {
 
     // Notify drivers sequentially with 12-second timeout
     const notificationResults = [];
-    
+
     for (let i = 0; i < drivers.length; i++) {
       const driver = drivers[i];
-      
+
       // Check if order already taken
       const lock = orderLocks.get(orderId);
       if (lock?.locked) {

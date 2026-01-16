@@ -48,6 +48,10 @@ const User = sequelize.define('User', {
   blockReason: {
     type: DataTypes.STRING,
   },
+  points: {
+    type: DataTypes.INTEGER,
+    defaultValue: 0,
+  },
 }, {
   hooks: {
     beforeCreate: async (user) => {

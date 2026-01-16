@@ -1,70 +1,92 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { API_URL, BASE_URL } from '../config/api';
+import { authenticatedFetch } from '../auth/auth';
 
 export default function InvoicesPage() {
-  const [invoices] = useState([
-    { id: '1001', orderId: '1001', driver: 'أحمد محمد', amount: 5.50, imageUrl: '/invoice1.jpg', uploadedAt: '2025-11-26T10:35:00', verified: true },
-    { id: '1002', orderId: '1003', driver: 'محمود سعيد', amount: 4.50, imageUrl: '/invoice2.jpg', uploadedAt: '2025-11-26T11:50:00', verified: false },
-    { id: '1003', orderId: '1004', driver: 'أحمد محمد', amount: 12.00, imageUrl: '/invoice3.jpg', uploadedAt: '2025-11-26T12:15:00', verified: false },
-  ]);
-
+  const [invoices, setInvoices] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [selectedInvoice, setSelectedInvoice] = useState(null);
+  const [filter, setFilter] = useState('all');
+
+  useEffect(() => {
+    fetchInvoices();
+  }, [filter]);
+
+  const fetchInvoices = async () => {
+    try {
+      const res = await authenticatedFetch(`${API_URL}/admin/invoices?location=${filter}`);
+      const data = await res.json();
+      if (data.success) {
+        // Flatten the grouped object for the table or adapt UI. 
+        // The API returns grouped by location: { "Location A": [...], "Location B": [...] }
+        // Let's flatten for this table view
+        const allInvoices = [];
+        Object.keys(data.invoices).forEach(loc => {
+          data.invoices[loc].forEach(inv => {
+            allInvoices.push({ ...inv, location: loc });
+          });
+        });
+        setInvoices(allInvoices);
+      }
+    } catch (error) {
+      console.error('Error fetching invoices:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div>
       <h1 className="page-title">الفواتير</h1>
 
       <div className="filters">
-        <select>
-          <option value="all">جميع الفواتير</option>
-          <option value="verified">موثقة</option>
-          <option value="pending">بانتظار التوثيق</option>
+        <select onChange={e => setFilter(e.target.value)} value={filter}>
+          <option value="all">جميع المناطق</option>
+          {/* Add more locations dynamically if needed */}
         </select>
-        <input type="date" />
-        <input type="text" placeholder="بحث برقم الطلب..." />
+        <button className="btn btn-sm btn-secondary" onClick={fetchInvoices}>
+          <i className="fas fa-sync"></i> تحديث
+        </button>
       </div>
 
       <div className="card">
-        <table>
-          <thead>
-            <tr>
-              <th>رقم الفاتورة</th>
-              <th>رقم الطلب</th>
-              <th>السائق</th>
-              <th>المبلغ</th>
-              <th>تاريخ الرفع</th>
-              <th>الحالة</th>
-              <th>إجراءات</th>
-            </tr>
-          </thead>
-          <tbody>
-            {invoices.map(invoice => (
-              <tr key={invoice.id}>
-                <td>#{invoice.id}</td>
-                <td>#{invoice.orderId}</td>
-                <td>{invoice.driver}</td>
-                <td>{invoice.amount.toFixed(2)} د</td>
-                <td>{new Date(invoice.uploadedAt).toLocaleString('ar')}</td>
-                <td>
-                  {invoice.verified ? (
-                    <span className="badge badge-success">موثقة ✓</span>
-                  ) : (
-                    <span className="badge badge-warning">بانتظار التوثيق</span>
-                  )}
-                </td>
-                <td>
-                  <button className="btn btn-sm btn-primary" onClick={() => setSelectedInvoice(invoice)}>
-                    عرض الصورة
-                  </button>
-                  {!invoice.verified && (
-                    <button className="btn btn-sm btn-success" style={{ marginRight: 8 }}>
-                      توثيق
-                    </button>
-                  )}
-                </td>
+        {loading ? <p className="text-center p-3">جاري التحميل...</p> : (
+          <table>
+            <thead>
+              <tr>
+                <th>رقم الطلب</th>
+                <th>السائق</th>
+                <th>الموقع</th>
+                <th>التاريخ</th>
+                <th>الصورة</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {invoices.map(invoice => (
+                <tr key={invoice.id}>
+                  <td>#{invoice.orderId?.slice(0, 8)}</td>
+                  <td>{invoice.driver}</td>
+                  <td>{invoice.location}</td>
+                  <td>
+                    {new Date(invoice.time).toLocaleString('ar-EG', {
+                      year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+                    })}
+                  </td>
+                  <td>
+                    <button className="btn btn-sm btn-primary" onClick={() => setSelectedInvoice(invoice)}>
+                      <i className="fas fa-eye"></i> عرض
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {invoices.length === 0 && (
+                <tr>
+                  <td colSpan="5" className="text-center">لا توجد فواتير</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        )}
       </div>
 
       {/* Invoice Image Modal */}
@@ -81,24 +103,28 @@ export default function InvoicesPage() {
           justifyContent: 'center',
           zIndex: 1000,
         }} onClick={() => setSelectedInvoice(null)}>
-          <div style={{ background: 'white', padding: 24, borderRadius: 16, maxWidth: 500 }}>
-            <h3>فاتورة #{selectedInvoice.id}</h3>
+          <div style={{ background: 'white', padding: 24, borderRadius: 16, maxWidth: 600, width: '90%' }} onClick={e => e.stopPropagation()}>
+            <h3>فاتورة طلب #{selectedInvoice.orderId?.slice(0, 8)}</h3>
             <div style={{
-              width: 400,
-              height: 300,
-              background: '#f5f5f5',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              borderRadius: 8,
               marginTop: 16,
+              textAlign: 'center'
             }}>
-              🧾 صورة الفاتورة
+              {selectedInvoice.image ? (
+                <img
+                  src={selectedInvoice.image.startsWith('http') ? selectedInvoice.image : `${BASE_URL}/${selectedInvoice.image.replace(/^uploads\//, '')}`}
+                  alt="Invoice"
+                  style={{ maxWidth: '100%', maxHeight: '60vh', borderRadius: 8 }}
+                />
+              ) : (
+                <div style={{ padding: 40, background: '#f5f5f5', borderRadius: 8 }}>لا توجد صورة</div>
+              )}
             </div>
-            <div style={{ marginTop: 16 }}>
-              <p><strong>المبلغ:</strong> {selectedInvoice.amount.toFixed(2)} ل.س</p>
-              <p><strong>السائق:</strong> {selectedInvoice.driver}</p>
-            </div>
+            <button
+              className="btn btn-danger btn-block mt-3"
+              onClick={() => setSelectedInvoice(null)}
+            >
+              إغلاق
+            </button>
           </div>
         </div>
       )}

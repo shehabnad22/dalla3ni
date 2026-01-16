@@ -6,8 +6,10 @@ import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'main.dart';
 import 'config/app_config.dart';
 import 'config/app_colors.dart';
+import 'services/socket_service.dart';
 
 // ==================== Driver Main App ====================
 class DriverApp extends StatelessWidget {
@@ -268,9 +270,32 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
           await prefs.setString('access_token', data['accessToken'] ?? '');
           await prefs.setString('refresh_token', data['refreshToken'] ?? '');
           
-          // Save driver ID from response
-          if (data['driver'] != null && data['driver']['id'] != null) {
-            await prefs.setString('driver_id', data['driver']['id'].toString());
+          // Save driver name from user object
+          if (data['user'] != null && data['user']['name'] != null) {
+            await prefs.setString('driver_name', data['user']['name']);
+          }
+          
+          // Save driver ID and profile data from response
+          if (data['driver'] != null) {
+            final driver = data['driver'];
+            if (driver['id'] != null) {
+              await prefs.setString('driver_id', driver['id'].toString());
+            }
+            if (driver['rating'] != null) {
+              await prefs.setDouble('driver_rating', (driver['rating'] as num).toDouble());
+            }
+            if (driver['totalDeliveries'] != null) {
+              await prefs.setInt('driver_total_deliveries', driver['totalDeliveries'] as int);
+            }
+            if (driver['workingAreas'] != null && driver['workingAreas'] is List) {
+              await prefs.setString('driver_working_areas', (driver['workingAreas'] as List).join(', '));
+            }
+            if (driver['workStartTime'] != null) {
+              await prefs.setString('driver_work_start', driver['workStartTime']);
+            }
+            if (driver['workEndTime'] != null) {
+              await prefs.setString('driver_work_end', driver['workEndTime']);
+            }
           } else if (data['driverId'] != null) {
             await prefs.setString('driver_id', data['driverId'].toString());
           }
@@ -468,24 +493,16 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   }
 
   void _setupNotificationListener() {
-    // TODO: Setup Firebase Cloud Messaging
-    // FirebaseMessaging.onMessage.listen((message) { ... });
-    // FirebaseMessaging.onBackgroundMessage(_backgroundHandler);
+    // Initialize Socket Connection
+    SocketService.connect();
     
-    // Mock incoming request for demo
-    Future.delayed(const Duration(seconds: 3), () {
+    // Listen for new orders
+    SocketService.onNewOrder = (data) {
       if (_isOnline && mounted) {
-        _showIncomingRequest({
-          'id': 'order-123',
-          'itemsText': '2 شاورما دجاج + بيبسي كبير من مطعم الشام',
-          'estimatedPrice': 5.50,
-          'deliveryAddress': 'شارع الجامعة، عمارة 15',
-          'customerName': 'محمد أحمد',
-          'customerPhone': '0791234567',
-          'pickupAddress': 'مطعم الشام - وسط البلد',
-        });
+        // Play notification sound here if needed
+        _showIncomingRequest(data);
       }
-    });
+    };
   }
 
   void _showIncomingRequest(Map<String, dynamic> order) {
@@ -579,7 +596,6 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         children: [
           _buildHomeTab(),
           _buildJobsTab(),
-          const DriverWalletScreen(),
           const DriverProfileScreen(),
         ],
       ),
@@ -598,7 +614,6 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
             ),
             label: 'طلباتي',
           ),
-          const BottomNavigationBarItem(icon: Icon(Icons.wallet), label: 'المحفظة'),
           const BottomNavigationBarItem(icon: Icon(Icons.person), label: 'حسابي'),
         ],
       ),
@@ -1537,8 +1552,52 @@ class _StatCard extends StatelessWidget {
 }
 
 // ==================== Driver Profile Screen ====================
-class DriverProfileScreen extends StatelessWidget {
+class DriverProfileScreen extends StatefulWidget {
   const DriverProfileScreen({super.key});
+
+  @override
+  State<DriverProfileScreen> createState() => _DriverProfileScreenState();
+}
+
+class _DriverProfileScreenState extends State<DriverProfileScreen> {
+  String _driverName = 'جاري التحميل...';
+  String _driverPhone = '';
+  double _driverRating = 0.0;
+  int _totalDeliveries = 0;
+  String _workingAreas = '';
+  String _workStartTime = '';
+  String _workEndTime = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDriverData();
+  }
+
+  Future<void> _loadDriverData() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _driverName = prefs.getString('driver_name') ?? 'سائق';
+      _driverPhone = prefs.getString('driver_phone') ?? '';
+      _driverRating = prefs.getDouble('driver_rating') ?? 0.0;
+      _totalDeliveries = prefs.getInt('driver_total_deliveries') ?? 0;
+      _workingAreas = prefs.getString('driver_working_areas') ?? '';
+      _workStartTime = prefs.getString('driver_work_start') ?? '';
+      _workEndTime = prefs.getString('driver_work_end') ?? '';
+    });
+  }
+
+  Future<void> _logout() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.clear();
+    if (mounted) {
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const OnboardingScreen()),
+        (route) => false,
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1553,7 +1612,7 @@ class DriverProfileScreen extends StatelessWidget {
             child: Icon(Icons.person, size: 50, color: Colors.white),
           ),
           const SizedBox(height: 16),
-          const Text('أحمد محمد', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+          Text(_driverName, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
           const Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -1563,20 +1622,20 @@ class DriverProfileScreen extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 8),
-          const Row(
+          Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.star, color: Colors.amber, size: 20),
-              Text(' 4.8 (156 تقييم)', style: TextStyle(color: Colors.grey)),
+              const Icon(Icons.star, color: Colors.amber, size: 20),
+              Text(' ${_driverRating.toStringAsFixed(1)} ($_totalDeliveries تقييم)', style: const TextStyle(color: Colors.grey)),
             ],
           ),
           const SizedBox(height: 24),
           
-          const _ProfileTile(icon: Icons.phone, title: 'رقم الهاتف', value: '079 123 4567'),
-          const _ProfileTile(icon: Icons.motorcycle, title: 'رقم اللوحة', value: '12-34567'),
-          const _ProfileTile(icon: Icons.two_wheeler, title: 'موديل الدراجة', value: 'Honda CG 125'),
-          const _ProfileTile(icon: Icons.location_on, title: 'المناطق', value: 'وسط البلد، الجبيهة، عبدون'),
-          const _ProfileTile(icon: Icons.access_time, title: 'ساعات العمل', value: '8:00 ص - 10:00 م'),
+          _ProfileTile(icon: Icons.phone, title: 'رقم الهاتف', value: _driverPhone),
+          if (_workingAreas.isNotEmpty)
+            _ProfileTile(icon: Icons.location_on, title: 'المناطق', value: _workingAreas),
+          if (_workStartTime.isNotEmpty && _workEndTime.isNotEmpty)
+            _ProfileTile(icon: Icons.access_time, title: 'ساعات العمل', value: '$_workStartTime - $_workEndTime'),
           
           const SizedBox(height: 24),
           SizedBox(
@@ -1595,7 +1654,7 @@ class DriverProfileScreen extends StatelessWidget {
           SizedBox(
             width: double.infinity,
             child: TextButton.icon(
-              onPressed: () {},
+              onPressed: _logout,
               icon: const Icon(Icons.logout, color: Colors.red),
               label: const Text('تسجيل الخروج', style: TextStyle(color: Colors.red)),
             ),

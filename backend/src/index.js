@@ -184,6 +184,7 @@ app.use('/api/auth', require('./routes/auth'));
 const { authenticate } = require('./middleware/auth');
 // For MVP, allow orders without auth (will add auth later)
 app.use('/api/orders', require('./routes/orders'));
+app.use('/api/users', require('./routes/users'));
 app.use('/api/drivers', authenticate, require('./routes/drivers'));
 app.use('/api/admin', authenticate, require('./middleware/auth').requireAdmin, require('./routes/admin'));
 
@@ -200,8 +201,17 @@ sequelize.sync({ alter: true }).then(() => {
   });
   console.log('⏰ Scheduled daily debt check at 23:59');
 
-  app.listen(PORT, () => {
+  // Create HTTP server
+  const http = require('http');
+  const server = http.createServer(app);
+
+  // Initialize Socket.IO
+  const { initializeSocket } = require('./services/socketService');
+  initializeSocket(server);
+
+  server.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`);
+    console.log(`🔌 Socket.IO ready for real-time connections`);
   });
 }).catch(err => {
   console.error('❌ Database sync failed:', err);

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { API_URL } from '../config/api';
+import { API_URL, BASE_URL } from '../config/api';
 import { authenticatedFetch } from '../auth/auth';
 
 const statusLabels = {
@@ -17,22 +17,19 @@ export default function OrdersPage() {
   const [orders, setOrders] = useState([]);
   const [filter, setFilter] = useState('all');
   const [dateFilter, setDateFilter] = useState('');
-  const [driverFilter, setDriverFilter] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
-  const [loading, setLoading] = useState(true);
   const [selectedOrder, setSelectedOrder] = useState(null);
 
   useEffect(() => {
     fetchOrders();
-  }, [filter, dateFilter, driverFilter]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filter, dateFilter]);
 
   const fetchOrders = async () => {
-    setLoading(true);
     try {
       const params = new URLSearchParams();
       if (filter !== 'all') params.append('status', filter);
       if (dateFilter) params.append('date', dateFilter);
-      if (driverFilter) params.append('driverId', driverFilter);
 
       const res = await authenticatedFetch(`${API_URL}/admin/orders?${params}`);
       const data = await res.json();
@@ -42,7 +39,6 @@ export default function OrdersPage() {
     } catch (error) {
       console.error('Error fetching orders:', error);
     }
-    setLoading(false);
   };
 
   const filteredOrders = orders.filter(order => {
@@ -115,7 +111,15 @@ export default function OrdersPage() {
                     {statusLabels[order.status]?.label || order.status}
                   </span>
                 </td>
-                <td>{new Date(order.createdAt).toLocaleString('ar')}</td>
+                <td>
+                  {order.createdAt ? new Date(order.createdAt).toLocaleString('ar-EG', {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                  }) : 'غير متوفر'}
+                </td>
                 <td>
                   <button
                     className="btn btn-sm btn-primary"
@@ -127,9 +131,9 @@ export default function OrdersPage() {
                     <button
                       className="btn btn-sm btn-success"
                       style={{ marginRight: '8px' }}
-                      onClick={() => window.open(order.invoiceImageUrl, '_blank')}
+                      onClick={() => window.open(order.invoiceImageUrl.startsWith('http') ? order.invoiceImageUrl : `${BASE_URL}/${order.invoiceImageUrl}`, '_blank')}
                     >
-                      📄 فاتورة
+                      <i className="fas fa-file-invoice"></i> فاتورة
                     </button>
                   )}
                 </td>
@@ -163,20 +167,42 @@ export default function OrdersPage() {
             overflow: 'auto',
           }} onClick={e => e.stopPropagation()}>
             <h2>تفاصيل الطلب #{selectedOrder.id?.slice(0, 8)}</h2>
-            <div style={{ marginTop: '16px' }}>
-              <p><strong>الزبون:</strong> {selectedOrder.customer?.name} ({selectedOrder.customer?.phone})</p>
-              <p><strong>الطلب:</strong> {selectedOrder.itemsText}</p>
-              <p><strong>السائق:</strong> {selectedOrder.Driver?.User?.name || '-'}</p>
-              <p><strong>السعر:</strong> {parseFloat(selectedOrder.estimatedPrice || 0).toFixed(2)} ل.س</p>
-              <p><strong>رسوم التوصيل:</strong> {parseFloat(selectedOrder.deliveryFee || 0).toFixed(2)} ل.س</p>
-              <p><strong>الحالة:</strong> {statusLabels[selectedOrder.status]?.label}</p>
+            <div style={{ marginTop: '16px', display: 'grid', gap: '16px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                <div style={{ background: '#f9f9f9', padding: '12px', borderRadius: '8px' }}>
+                  <h3 style={{ fontSize: '16px', marginBottom: '8px', color: '#666' }}>معلومات الطلب</h3>
+                  <p><strong>المحتوى:</strong> {selectedOrder.itemsText}</p>
+                  <p><strong>السعر المقدر:</strong> {parseFloat(selectedOrder.estimatedPrice || 0).toFixed(2)} ل.س</p>
+                  <p><strong>رسوم التوصيل:</strong> {parseFloat(selectedOrder.deliveryFee || 0).toFixed(2)} ل.س</p>
+                  <p><strong>الحالة:</strong> <span className={`badge ${statusLabels[selectedOrder.status]?.class}`}>{statusLabels[selectedOrder.status]?.label}</span></p>
+                  {selectedOrder.createdAt && selectedOrder.completedAt && (
+                    <p><strong>المدة المستغرقة:</strong> {Math.round((new Date(selectedOrder.completedAt) - new Date(selectedOrder.createdAt)) / 60000)} دقيقة</p>
+                  )}
+                </div>
+
+                <div style={{ background: '#f9f9f9', padding: '12px', borderRadius: '8px' }}>
+                  <h3 style={{ fontSize: '16px', marginBottom: '8px', color: '#666' }}>الأطراف</h3>
+                  <p><strong>الزبون:</strong> {selectedOrder.customer?.name} <br /><span className="text-muted">{selectedOrder.customer?.phone}</span></p>
+                  <hr style={{ margin: '8px 0', border: '0', borderTop: '1px solid #eee' }} />
+                  <p><strong>السائق:</strong> {selectedOrder.Driver?.User?.name || 'لم يتم التعيين'} <br /><span className="text-muted">{selectedOrder.Driver?.User?.phone}</span></p>
+                </div>
+              </div>
+
+              <div style={{ background: '#f9f9f9', padding: '12px', borderRadius: '8px' }}>
+                <h3 style={{ fontSize: '16px', marginBottom: '8px', color: '#666' }}>العناوين</h3>
+                <p><strong>من (الاستلام):</strong> {selectedOrder.pickupAddress || selectedOrder.deliveryAddress}</p>
+                <p><strong>إلى (التوصيل):</strong> {selectedOrder.deliveryAddress}</p>
+                {selectedOrder.area && <p><strong>المنطقة:</strong> {selectedOrder.area}</p>}
+              </div>
+
               {selectedOrder.invoiceImageUrl && (
-                <div style={{ marginTop: '16px' }}>
+                <div style={{ marginTop: '8px' }}>
                   <strong>صورة الفاتورة:</strong>
                   <img
-                    src={selectedOrder.invoiceImageUrl}
+                    src={selectedOrder.invoiceImageUrl.startsWith('http') ? selectedOrder.invoiceImageUrl : `${BASE_URL}/${selectedOrder.invoiceImageUrl.replace(/^uploads\//, '')}`}
                     alt="Invoice"
-                    style={{ maxWidth: '100%', marginTop: '8px', borderRadius: '8px' }}
+                    style={{ maxWidth: '100%', marginTop: '8px', borderRadius: '8px', maxHeight: '300px', objectFit: 'contain', background: '#eee' }}
+                    onClick={() => window.open(selectedOrder.invoiceImageUrl.startsWith('http') ? selectedOrder.invoiceImageUrl : `${BASE_URL}/${selectedOrder.invoiceImageUrl.replace(/^uploads\//, '')}`, '_blank')}
                   />
                 </div>
               )}

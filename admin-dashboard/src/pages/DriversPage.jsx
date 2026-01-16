@@ -225,7 +225,7 @@ export default function DriversPage() {
                 <div className="image-label">صورة الهوية (اضغط للتكبير)</div>
                 {selectedDriver.idImage ? (
                   <img
-                    src={selectedDriver.idImage.startsWith('http') ? selectedDriver.idImage : `${BASE_URL}/${selectedDriver.idImage.replace(/^uploads\//, '')}`}
+                    src={selectedDriver.idImage.startsWith('http') ? selectedDriver.idImage : `${BASE_URL}/${selectedDriver.idImage}`}
                     alt="ID"
                     style={{ width: '100%', height: '150px', objectFit: 'cover', cursor: 'pointer', borderRadius: '8px' }}
                     onClick={(e) => {
@@ -246,7 +246,7 @@ export default function DriversPage() {
                 <div className="image-label">صورة الدراجة (اضغط للتكبير)</div>
                 {selectedDriver.motorImage ? (
                   <img
-                    src={selectedDriver.motorImage.startsWith('http') ? selectedDriver.motorImage : `${BASE_URL}/${selectedDriver.motorImage.replace(/^uploads\//, '')}`}
+                    src={selectedDriver.motorImage.startsWith('http') ? selectedDriver.motorImage : `${BASE_URL}/${selectedDriver.motorImage}`}
                     alt="Bike"
                     style={{ width: '100%', height: '150px', objectFit: 'cover', cursor: 'pointer', borderRadius: '8px' }}
                     onClick={(e) => {

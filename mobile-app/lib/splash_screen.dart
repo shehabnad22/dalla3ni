@@ -209,18 +209,15 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     }
 
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          color: AppColors.primary, // Orange background
-        ),
+      backgroundColor: AppColors.primary,
+      body: Center(
         child: FadeTransition(
           opacity: _fadeAnimation,
           child: Image.asset(
             'assets/splash_screen.png',
-            width: double.infinity,
-            height: double.infinity,
-            fit: BoxFit.cover,
-            alignment: Alignment.center,
+            width: 250, // Fixed size to prevent jump from native
+            height: 250,
+            fit: BoxFit.contain,
             errorBuilder: (context, error, stackTrace) {
               // Fallback if image not found - show app name and icon with orange background
               return Container(
