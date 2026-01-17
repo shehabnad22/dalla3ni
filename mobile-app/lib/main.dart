@@ -15,6 +15,7 @@ import 'dart:io';
 import 'splash_screen.dart';
 import 'services/text_service.dart';
 import 'services/image_compression_service.dart';
+import 'services/socket_service.dart';
 import 'config/app_config.dart';
 import 'config/app_colors.dart';
 
