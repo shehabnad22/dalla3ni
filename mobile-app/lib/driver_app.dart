@@ -455,7 +455,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     // Start listening to position updates
     _positionStream = Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.medium, // Lower accuracy = lower power & data
+        accuracy: LocationAccuracy.high, // HIGH precision for accurate distance calculation
         distanceFilter: 50, // Update every 50 meters
       ),
     ).listen((Position position) {
