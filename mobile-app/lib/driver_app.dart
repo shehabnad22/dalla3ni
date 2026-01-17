@@ -418,6 +418,8 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   final List<Map<String, dynamic>> _acceptedJobs = [];
   Position? _currentPosition;
   StreamSubscription<Position>? _positionStream;
+  DateTime _lastLocationUpdateTime = DateTime.now();
+  final int _ecoUpdateInterval = 120; // 2 minutes for Ultra-Eco mode
 
   @override
   void initState() {
@@ -453,19 +455,69 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     // Start listening to position updates
     _positionStream = Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.bestForNavigation,
-        distanceFilter: 5, // Update every 5 meters for higher precision
+        accuracy: LocationAccuracy.balanced, // Lower accuracy = lower power & data
+        distanceFilter: 50, // Update every 50 meters
       ),
     ).listen((Position position) {
       setState(() {
         _currentPosition = position;
       });
       
-      // Send location to server when online
+      // ULTRA-ECO THROTTLE: 
+      // If we have accepted jobs, update every 5-10 meters (high freq)
+      // If idle, update every 2 minutes or 100 meters (ultra low freq)
+      final bool hasActiveJob = _acceptedJobs.any((j) => j['status'] != 'COMPLETED' && j['status'] != 'CANCELED');
+      final int timeSinceLastUpdate = DateTime.now().difference(_lastLocationUpdateTime).inSeconds;
+
       if (_isOnline) {
-        _updateDriverLocation(position);
+        if (hasActiveJob) {
+          _updateDriverLocation(position);
+          _lastLocationUpdateTime = DateTime.now();
+        } else if (timeSinceLastUpdate >= _ecoUpdateInterval) {
+           _updateDriverLocation(position);
+           _lastLocationUpdateTime = DateTime.now();
+        }
       }
     });
+  }
+
+  Future<bool> _updateAvailability(bool isAvailable) async {
+    final prefs = await SharedPreferences.getInstance();
+    final driverId = prefs.getString('driver_id');
+    if (driverId == null) return false;
+
+    try {
+      final url = Uri.parse(AppConfig.driverAvailability(driverId));
+      final response = await http.patch(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ${prefs.getString('access_token')}',
+        },
+        body: json.encode({
+          'isAvailable': isAvailable,
+          if (_currentPosition != null) ...{
+            'latitude': _currentPosition!.latitude,
+            'longitude': _currentPosition!.longitude,
+          }
+        }),
+      );
+      
+      if (response.statusCode == 200) {
+        if (isAvailable) {
+          _startLocationTracking();
+        } else {
+          _positionStream?.cancel();
+        }
+        return true;
+      } else {
+        debugPrint('Failed to update availability: ${response.statusCode}');
+        return false;
+      }
+    } catch (e) {
+      debugPrint('Error updating availability: $e');
+      return false;
+    }
   }
 
   Future<void> _updateDriverLocation(Position position) async {
@@ -473,19 +525,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     final driverId = prefs.getString('driver_id');
     if (driverId == null) return;
 
-    try {
-      final url = Uri.parse(AppConfig.driverLocation(driverId));
-      await http.patch(
-        url,
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode({
-          'latitude': position.latitude,
-          'longitude': position.longitude,
-        }),
-      );
-    } catch (e) {
-      debugPrint('Error updating location: $e');
-    }
+    // ULTRA-ECO: Only send via Socket (no HTTP calls during idle)
+    // Socket will handle location with minimal data
+    SocketService.updateDriverLocation(position.latitude, position.longitude);
     
     // Save to local storage
     await prefs.setDouble('driver_latitude', position.latitude);
@@ -496,13 +538,37 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     // Initialize Socket Connection
     SocketService.connect();
     
-    // Listen for new orders
+    // Listen for new orders (Sequential Matching - Legacy)
     SocketService.onNewOrder = (data) {
       if (_isOnline && mounted) {
-        // Play notification sound here if needed
         _showIncomingRequest(data);
       }
     };
+
+    // Listen for Broadcast Orders (EXTREME MODE)
+    // data keys: it (items), pa (pickup), da (delivery), ep (price), cn (customer), cp (phone)
+    SocketService.socket?.on('new_order_broadcast', (data) {
+      if (_isOnline && mounted) {
+        // Play extreme notification sound logic here
+        
+        // Map shortened keys back to readable format for the UI
+        final mappedOrder = {
+          'id': data['orderId'],
+          'itemsText': data['it'],
+          'pickupAddress': data['pa'],
+          'deliveryAddress': data['da'],
+          'estimatedPrice': data['ep'],
+          'customerName': data['cn'],
+          'customerPhone': data['cp'],
+          'latitude': data['la'],
+          'longitude': data['ln'],
+          'timeout': data['timeout'],
+          'isBroadcast': true,
+        };
+        
+        _showIncomingRequest(mappedOrder);
+      }
+    });
   }
 
   void _showIncomingRequest(Map<String, dynamic> order) {
@@ -528,17 +594,63 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     );
   }
 
-  void _acceptOrder(Map<String, dynamic> order) {
-    setState(() {
-      _incomingRequests.remove(order);
-      order['status'] = 'ASSIGNED';
-      order['acceptedAt'] = DateTime.now().toIso8601String();
-      _acceptedJobs.add(order);
-    });
+  Future<void> _acceptOrder(Map<String, dynamic> order) async {
+    final prefs = await SharedPreferences.getInstance();
+    final driverId = prefs.getString('driver_id');
+    final accessToken = prefs.getString('access_token');
     
+    if (driverId == null || accessToken == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('خطأ في المصادقة. يرجى تسجيل الدخول ثانية')),
+      );
+      return;
+    }
+
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('تم قبول الطلب بنجاح!'), backgroundColor: Colors.green),
+      const SnackBar(content: Text('جاري معالجة الطلب...'), duration: Duration(seconds: 1)),
     );
+
+    try {
+      final response = await http.post(
+        Uri.parse(AppConfig.orderAccept(order['id'])),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $accessToken',
+        },
+        body: json.encode({'driverId': driverId}),
+      );
+
+      final data = json.decode(response.body);
+      
+      if (response.statusCode == 200 && data['success'] == true) {
+        setState(() {
+          _incomingRequests.removeWhere((o) => o['id'] == order['id']);
+          final acceptedJob = Map<String, dynamic>.from(order);
+          acceptedJob['status'] = 'ASSIGNED';
+          acceptedJob['acceptedAt'] = DateTime.now().toIso8601String();
+          _acceptedJobs.add(acceptedJob);
+        });
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('تم قبول الطلب بنجاح!'), backgroundColor: Colors.green),
+        );
+      } else {
+        // Order might have been taken by someone else
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(data['message'] ?? 'فشل قبول الطلب. ربما تم أخذه من قبل سائق آخر'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        setState(() {
+          _incomingRequests.removeWhere((o) => o['id'] == order['id']);
+        });
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('خطأ في الاتصال: $e')),
+      );
+    }
   }
 
   @override
@@ -571,17 +683,17 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                 Text(_isOnline ? 'متصل' : 'غير متصل', style: const TextStyle(fontSize: 12)),
                 Switch(
                   value: _isOnline,
-                  onChanged: (v) {
-                    setState(() {
-                      _isOnline = v;
-                      if (v) {
-                        // Start location tracking when going online
-                        _startLocationTracking();
-                      } else {
-                        // Stop location tracking when going offline
-                        _positionStream?.cancel();
-                      }
-                    });
+                  onChanged: (v) async {
+                    final prevState = _isOnline;
+                    setState(() => _isOnline = v);
+                    
+                    final success = await _updateAvailability(v);
+                    if (!success && mounted) {
+                      setState(() => _isOnline = prevState);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('فشل تحديث الحالة. تأكد من الاتصال بالإنترنت')),
+                      );
+                    }
                   },
                   activeThumbColor: Colors.green,
                   materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,

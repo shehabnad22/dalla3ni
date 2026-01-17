@@ -53,6 +53,7 @@ class AppConfig {
   
   // Driver Endpoints
   static String driverLocation(String driverId) => '$apiBaseUrl/drivers/$driverId/location';
+  static String driverAvailability(String driverId) => '$apiBaseUrl/drivers/$driverId/availability';
   
   // Health Check
   static String get health => '$baseUrl/health';

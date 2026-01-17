@@ -944,16 +944,22 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
       if (!mounted) return;
 
       if (image != null) {
+        // EXTREME MODE: Compress image before UI updates
+        final File? compressed = await ImageCompressionService.compressImage(File(image.path));
+        final String finalPath = compressed?.path ?? image.path;
+
+        if (!mounted) return;
+
         setState(() {
           if (type == 'id') {
-            _idImagePath = image.path;
+            _idImagePath = finalPath;
           } else {
-            _bikeImagePath = image.path;
+            _bikeImagePath = finalPath;
           }
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('تم اختيار ${type == 'id' ? 'صورة الهوية' : 'صورة الدراجة'}'),
+            content: Text('تم اختيار وضغط ${type == 'id' ? 'صورة الهوية' : 'صورة الدراجة'}'),
             backgroundColor: Colors.green,
           ),
         );
@@ -1843,6 +1849,9 @@ class _WriteOrderScreenState extends State<WriteOrderScreen> {
   bool _pointsEnabled = false;
   int _pointsForFreeOrder = 100;
 
+  final List<String> _areas = ['اللاذقية العامة', 'المشروع العاشر', 'الرمل الشمالي', 'الكورنيش الجنوبي', 'الصليبة'];
+  String _selectedArea = 'اللاذقية العامة';
+
   @override
   void initState() {
     super.initState();
@@ -2060,6 +2069,39 @@ class _WriteOrderScreenState extends State<WriteOrderScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // Area Selection - NEW for Extreme matching
+            const Text('اختر منطقتك', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppColors.primary.withOpacity(0.3)),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4)),
+                ],
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: _selectedArea,
+                  isExpanded: true,
+                  icon: const Icon(Icons.location_on, color: AppColors.primary),
+                  items: _areas.map((String area) {
+                    return DropdownMenuItem<String>(
+                      value: area,
+                      child: Text(area, style: const TextStyle(fontWeight: FontWeight.bold)),
+                    );
+                  }).toList(),
+                  onChanged: (String? newValue) {
+                    setState(() {
+                      _selectedArea = newValue!;
+                    });
+                  },
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
             const Text('ماذا تريد؟', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             Text('اكتب طلبك بالتفصيل', style: TextStyle(color: Colors.grey[600])),
@@ -2259,7 +2301,7 @@ class _WriteOrderScreenState extends State<WriteOrderScreen> {
             'deliveryLng': _longitude?.toString(),
             'pickupAddress': _addressController.text,
             'notes': _notesController.text,
-            'area': 'default',
+            'area': _selectedArea,
             'usePoints': _usePoints,
           }),
         );
@@ -2344,7 +2386,25 @@ class _MatchingDriverScreenState extends State<MatchingDriverScreen> with Single
   void initState() {
     super.initState();
     _controller = AnimationController(duration: const Duration(seconds: 2), vsync: this)..repeat();
-    _findNearestDriver();
+    
+    // Connect socket and listen for updates
+    SocketService.connect();
+    SocketService.onOrderUpdate = (data) {
+      if (data['status'] == 'ASSIGNED' || data['status'] == 'EN_ROUTE') {
+        if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (_) => OrderTrackingScreen(orderData: {
+                ...widget.orderData ?? {},
+                'orderId': data['id']?.toString() ?? widget.orderData?['orderId'] ?? '',
+                'driverId': data['driverId']?.toString() ?? '',
+              }),
+            ),
+          );
+        }
+      }
+    };
   }
 
   Future<void> _findNearestDriver() async {

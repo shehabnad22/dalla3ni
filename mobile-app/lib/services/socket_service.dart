@@ -38,6 +38,11 @@ class SocketService {
         'auth': {
           'token': token,
         },
+        // ULTRA-ECO MODE: Minimal heartbeat to save data
+        'pingInterval': 120000, // 2 minutes (default is 25 seconds)
+        'pingTimeout': 60000,   // 1 minute timeout
+        'reconnection': true,
+        'reconnectionDelay': 5000,
       });
 
       // Connection events
