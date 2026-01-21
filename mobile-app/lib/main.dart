@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart'; // For MediaType
 import 'package:image_picker/image_picker.dart';
 import 'dart:convert';
 import 'dart:async';
@@ -1027,26 +1028,66 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
         request.fields['availabilityEnd'] = '${_endTime.hour.toString().padLeft(2, '0')}:${_endTime.minute.toString().padLeft(2, '0')}';
         
         
-        // Compress images before upload
+        
+        // Compress and upload ID photo
         if (_idImagePath != null) {
-          final idImageFile = File(_idImagePath!);
-          final compressedIdImage = await ImageCompressionService.compressImage(idImageFile);
-          if (compressedIdImage != null) {
-            request.files.add(await http.MultipartFile.fromPath('idPhoto', compressedIdImage.path));
-          } else {
-            // Fallback to original if compression fails
-            request.files.add(await http.MultipartFile.fromPath('idPhoto', _idImagePath!));
+          try {
+            final idImageFile = File(_idImagePath!);
+            final compressedIdImage = await ImageCompressionService.compressImage(idImageFile);
+            
+            if (compressedIdImage != null && await compressedIdImage.exists()) {
+              request.files.add(await http.MultipartFile.fromPath(
+                'idPhoto', 
+                compressedIdImage.path,
+                contentType: MediaType('image', 'jpeg'), // Force JPEG type
+              ));
+            } else {
+              // Fallback: use original with JPEG content type
+              request.files.add(await http.MultipartFile.fromPath(
+                'idPhoto', 
+                _idImagePath!,
+                contentType: MediaType('image', 'jpeg'),
+              ));
+            }
+          } catch (e) {
+            debugPrint('Error processing ID image: $e');
+            // Last resort: try original file
+            request.files.add(await http.MultipartFile.fromPath(
+              'idPhoto', 
+              _idImagePath!,
+              contentType: MediaType('image', 'jpeg'),
+            ));
           }
         }
         
+        // Compress and upload bike photo
         if (_bikeImagePath != null) {
-          final bikeImageFile = File(_bikeImagePath!);
-          final compressedBikeImage = await ImageCompressionService.compressImage(bikeImageFile);
-          if (compressedBikeImage != null) {
-            request.files.add(await http.MultipartFile.fromPath('bikePhoto', compressedBikeImage.path));
-          } else {
-            // Fallback to original if compression fails
-            request.files.add(await http.MultipartFile.fromPath('bikePhoto', _bikeImagePath!));
+          try {
+            final bikeImageFile = File(_bikeImagePath!);
+            final compressedBikeImage = await ImageCompressionService.compressImage(bikeImageFile);
+            
+            if (compressedBikeImage != null && await compressedBikeImage.exists()) {
+              request.files.add(await http.MultipartFile.fromPath(
+                'bikePhoto', 
+                compressedBikeImage.path,
+                contentType: MediaType('image', 'jpeg'), // Force JPEG type
+              ));
+            } else {
+              // Fallback: use original with JPEG content type
+              request.files.add(await http.MultipartFile.fromPath(
+                'bikePhoto', 
+                _bikeImagePath!,
+                contentType: MediaType('image', 'jpeg'),
+              ));
+            }
+          } catch (e) {
+            debugPrint('Error processing bike image: $e');
+            // Last resort: try original file
+            request.files.add(await http.MultipartFile.fromPath(
+              'bikePhoto', 
+              _bikeImagePath!,
+              contentType: MediaType('image', 'jpeg'),
+            ));
           }
         }
         
