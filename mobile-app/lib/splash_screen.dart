@@ -43,15 +43,11 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
       CurvedAnimation(parent: _controller, curve: Curves.easeIn),
     );
 
-    // Start animation after a short delay to ensure "empty orange" start
-    Future.delayed(const Duration(milliseconds: 600), () {
-      if (mounted) {
-        _controller.forward();
-      }
-    });
+    // Show logo immediately to match native splash
+    _controller.forward();
 
-    // Navigate after 2.5 seconds total
-    Future.delayed(const Duration(milliseconds: 2500), () {
+    // Navigate after 2 seconds
+    Future.delayed(const Duration(milliseconds: 2000), () {
       if (mounted) {
         _checkLoginStatus();
       }
