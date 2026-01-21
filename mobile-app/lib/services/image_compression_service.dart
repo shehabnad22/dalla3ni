@@ -20,17 +20,17 @@ class ImageCompressionService {
       final Directory tempDir = await getTemporaryDirectory();
       final String targetPath = path.join(
         tempDir.path,
-        'compressed_${DateTime.now().millisecondsSinceEpoch}.jpg',
+        'compressed_${DateTime.now().millisecondsSinceEpoch}.webp',
       );
 
       // Compress image
       final XFile? compressedFile = await FlutterImageCompress.compressAndGetFile(
         imageFile.absolute.path,
         targetPath,
-        quality: 85, // 85% quality - industry standard
-        minWidth: 1024, // Max width 1024px
-        minHeight: 1024, // Max height 1024px
-        format: CompressFormat.jpeg, // Always convert to JPEG
+        quality: 80, // High quality but small size
+        minWidth: 1024,
+        minHeight: 1024,
+        format: CompressFormat.webp, // Convert to WebP as requested
       );
 
       if (compressedFile == null) {

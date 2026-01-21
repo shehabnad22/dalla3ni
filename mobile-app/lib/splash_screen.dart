@@ -244,10 +244,12 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                             ),
                           ],
                         ),
-                        child: const Icon(
-                          Icons.motorcycle,
-                          size: 70,
-                          color: AppColors.primary,
+                        child: const Center(
+                          child: Icon(
+                            Icons.motorcycle,
+                            size: 80,
+                            color: AppColors.primary,
+                          ),
                         ),
                       ),
                       const SizedBox(height: 32),

@@ -1039,23 +1039,25 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
               request.files.add(await http.MultipartFile.fromPath(
                 'idPhoto', 
                 compressedIdImage.path,
-                contentType: MediaType('image', 'jpeg'), // Force JPEG type
+                filename: 'driver_${fullPhone}_id.webp',
+                contentType: MediaType('image', 'webp'), // Use WebP as requested
               ));
             } else {
-              // Fallback: use original with JPEG content type
+              // Fallback
               request.files.add(await http.MultipartFile.fromPath(
                 'idPhoto', 
                 _idImagePath!,
-                contentType: MediaType('image', 'jpeg'),
+                filename: 'driver_${fullPhone}_id.webp',
+                contentType: MediaType('image', 'webp'),
               ));
             }
           } catch (e) {
             debugPrint('Error processing ID image: $e');
-            // Last resort: try original file
             request.files.add(await http.MultipartFile.fromPath(
               'idPhoto', 
               _idImagePath!,
-              contentType: MediaType('image', 'jpeg'),
+              filename: 'driver_${fullPhone}_id.webp',
+              contentType: MediaType('image', 'webp'),
             ));
           }
         }
@@ -1070,23 +1072,25 @@ class _DriverRegisterScreenState extends State<DriverRegisterScreen> {
               request.files.add(await http.MultipartFile.fromPath(
                 'bikePhoto', 
                 compressedBikeImage.path,
-                contentType: MediaType('image', 'jpeg'), // Force JPEG type
+                filename: 'driver_${fullPhone}_bike.webp',
+                contentType: MediaType('image', 'webp'), // Use WebP
               ));
             } else {
-              // Fallback: use original with JPEG content type
+              // Fallback
               request.files.add(await http.MultipartFile.fromPath(
                 'bikePhoto', 
                 _bikeImagePath!,
-                contentType: MediaType('image', 'jpeg'),
+                filename: 'driver_${fullPhone}_bike.webp',
+                contentType: MediaType('image', 'webp'),
               ));
             }
           } catch (e) {
             debugPrint('Error processing bike image: $e');
-            // Last resort: try original file
             request.files.add(await http.MultipartFile.fromPath(
               'bikePhoto', 
               _bikeImagePath!,
-              contentType: MediaType('image', 'jpeg'),
+              filename: 'driver_${fullPhone}_bike.webp',
+              contentType: MediaType('image', 'webp'),
             ));
           }
         }
