@@ -213,69 +213,53 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
       body: Center(
         child: FadeTransition(
           opacity: _fadeAnimation,
-          child: Image.asset(
-            'assets/splash_screen.png',
-            width: 250, // Fixed size to prevent jump from native
-            height: 250,
-            fit: BoxFit.contain,
-            errorBuilder: (context, error, stackTrace) {
-              // Fallback if image not found - show app name and icon with orange background
-              return Container(
-                width: double.infinity,
-                height: double.infinity,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // The Logo: White circle with orange motorcycle
+              Container(
+                width: 180,
+                height: 180,
                 decoration: const BoxDecoration(
-                  color: AppColors.primary,
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black26,
+                      blurRadius: 20,
+                      offset: Offset(0, 10),
+                    ),
+                  ],
                 ),
-                child: Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Container(
-                        width: 140,
-                        height: 140,
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(35),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.2),
-                              blurRadius: 20,
-                              offset: const Offset(0, 10),
-                            ),
-                          ],
-                        ),
-                        child: const Center(
-                          child: Icon(
-                            Icons.motorcycle,
-                            size: 80,
-                            color: AppColors.primary,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 32),
-                      Text(
-                        TextService.get('app.name', defaultValue: 'دلّعني'),
-                        style: const TextStyle(
-                          fontSize: 52,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                          letterSpacing: 2,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        TextService.get('app.nameEn', defaultValue: 'Dalla3ni'),
-                        style: TextStyle(
-                          fontSize: 20,
-                          color: Colors.white.withOpacity(0.8),
-                          letterSpacing: 4,
-                        ),
-                      ),
-                    ],
+                child: const Center(
+                  child: Icon(
+                    Icons.motorcycle,
+                    size: 100,
+                    color: AppColors.primary,
                   ),
                 ),
-              );
-            },
+              ),
+              const SizedBox(height: 48),
+              // App Name in White
+              Text(
+                TextService.get('app.name', defaultValue: 'دلّعني'),
+                style: const TextStyle(
+                  fontSize: 56,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                  letterSpacing: 2,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                TextService.get('app.nameEn', defaultValue: 'Dalla3ni'),
+                style: TextStyle(
+                  fontSize: 22,
+                  color: Colors.white.withOpacity(0.9),
+                  letterSpacing: 4,
+                ),
+              ),
+            ],
           ),
         ),
       ),
